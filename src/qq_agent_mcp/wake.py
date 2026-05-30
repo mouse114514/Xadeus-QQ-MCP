@@ -133,18 +133,18 @@ def _type_via_clipboard(text: str, patterns: list[str] | None = None) -> bool:
     """Focus → CTRL+L → set clipboard → CTRL+V."""
     global _last_paste_text, _last_paste_time
 
-    # 文本去重：同一内容 3 秒内不重复粘贴
-    now = time.time()
-    if text == _last_paste_text and (now - _last_paste_time) < 3.0:
-        logger.warning("Duplicate paste suppressed (same text within 3s)")
-        return False
-
     acquired = _CLIPBOARD_LOCK.acquire(blocking=False)
     if not acquired:
         logger.warning("Clipboard operation already in progress, skipping")
         return False
 
     try:
+        # 文本去重（在锁内，原子操作）
+        now = time.time()
+        if text == _last_paste_text and (now - _last_paste_time) < 3.0:
+            logger.warning("Duplicate paste suppressed (same text within 3s)")
+            return False
+
         hwnd = _find_target_hwnd(patterns)
         if hwnd is None:
             logger.warning("opencode window not found")
