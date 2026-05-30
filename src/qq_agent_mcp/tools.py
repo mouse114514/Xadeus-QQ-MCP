@@ -1431,6 +1431,7 @@ def register_tools(
             message: str,
             cron_expr: str | None = None,
             interval_seconds: int | None = None,
+            once: bool = False,
         ) -> dict:
             """添加定时任务。到时间通过 wake 唤醒 agent。
 
@@ -1442,10 +1443,11 @@ def register_tools(
                 message: 触发时发送给 agent 的内容。
                 cron_expr: cron 表达式 "minute hour * * *"。
                 interval_seconds: 间隔秒数。
+                once: 是否单次触发（触发后自动删除）。
             """
             if not cron_expr and not interval_seconds:
                 return {"success": False, "error": "需要 cron_expr 或 interval_seconds"}
-            tid = timer_scheduler.add(cron_expr, interval_seconds, message)
+            tid = timer_scheduler.add(cron_expr, interval_seconds, message, once)
             return {"success": True, "task_id": tid}
 
         @mcp.tool()

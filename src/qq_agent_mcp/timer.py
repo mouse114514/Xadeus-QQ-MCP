@@ -21,6 +21,7 @@ class TimerTask:
     interval_seconds: int | None  # 3600 = 每小时
     message: str  # 触发时唤醒 agent 的内容
     enabled: bool = True
+    once: bool = False  # 单次触发，触发后自动删除
     last_fired: float | None = None  # 上次触发时间戳
 
 
@@ -55,7 +56,8 @@ class TimerScheduler:
 
     def add(self, cron_expr: str | None = None,
             interval_seconds: int | None = None,
-            message: str = "") -> int:
+            message: str = "",
+            once: bool = False) -> int:
         tid = str(self._next_id)
         self._next_id += 1
         task = TimerTask(
@@ -63,11 +65,12 @@ class TimerScheduler:
             cron_expr=cron_expr,
             interval_seconds=interval_seconds,
             message=message,
+            once=once,
         )
         self._tasks.append(task)
         self._save()
-        logger.info("Timer #%s added: cron=%s interval=%s msg=%s",
-                     tid, cron_expr, interval_seconds, message)
+        logger.info("Timer #%s added: cron=%s interval=%s once=%s msg=%s",
+                     tid, cron_expr, interval_seconds, once, message)
         return int(tid)
 
     def remove(self, index: int) -> bool:
@@ -87,6 +90,7 @@ class TimerScheduler:
                 "interval_seconds": t.interval_seconds,
                 "message": t.message,
                 "enabled": t.enabled,
+                "once": t.once,
             }
             for i, t in enumerate(self._tasks)
         ]
@@ -163,6 +167,16 @@ class TimerScheduler:
         logger.info("Timer #%s firing: %s", t.id, text)
         await self._wake_monitor.wake_with_message(text)
 
+        # 单次任务触发后自动删除
+        if t.once:
+            try:
+                idx = next(i for i, task in enumerate(self._tasks) if task.id == t.id)
+                self._tasks.pop(idx)
+                self._save()
+                logger.info("Timer #%s auto-removed (single-shot)", t.id)
+            except StopIteration:
+                pass
+
     # ── 持久化 ──
 
     def _save(self) -> None:
@@ -174,6 +188,7 @@ class TimerScheduler:
                     "interval_seconds": t.interval_seconds,
                     "message": t.message,
                     "enabled": t.enabled,
+                    "once": t.once,
                     "last_fired": t.last_fired,
                 }
                 for t in self._tasks
@@ -198,6 +213,7 @@ class TimerScheduler:
                     interval_seconds=t.get("interval_seconds"),
                     message=t.get("message", ""),
                     enabled=t.get("enabled", True),
+                    once=t.get("once", False),
                     last_fired=t.get("last_fired"),
                 )
                 for t in raw.get("tasks", [])
