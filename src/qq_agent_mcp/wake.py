@@ -213,6 +213,7 @@ class WakeMonitor:
         self._running = False
         self._on_wake = on_wake
         self._pending = False
+        self._auto_unlock_task: asyncio.Task | None = None
         self.config = WakeConfig.load()
         # 注册消息回调（消息入库时直接触发，无需轮询）
         ctx.set_message_callback(self._on_incoming_message)
@@ -325,10 +326,14 @@ class WakeMonitor:
 
     def start(self) -> None:
         self._running = True
+        self._auto_unlock_task = asyncio.create_task(self._auto_unlock_loop())
         logger.info("Wake monitor started (%d rules)", len(self.rules))
 
     async def stop(self) -> None:
         self._running = False
+        if self._auto_unlock_task is not None:
+            self._auto_unlock_task.cancel()
+            self._auto_unlock_task = None
         logger.info("Wake monitor stopped")
 
     def _matches_rule(self, target_type: str, target_id: str, msg: Message) -> WakeRule | None:
@@ -351,9 +356,21 @@ class WakeMonitor:
     def _format_wake_message(self, rule: WakeRule, target_type: str, target_id: str, msg: Message) -> str:
         return f"[MCP] {target_id} {msg.content}"
 
+    @property
+    def is_pending(self) -> bool:
+        return self._pending
+
     def clear_pending(self) -> None:
         """Agent 调用 QQ 发送工具时调用此方法，解除 pending 允许下次唤醒。"""
         self._pending = False
+
+    async def _auto_unlock_loop(self) -> None:
+        """每 60 秒自动解锁 pending，防止 agent 崩溃后卡死。"""
+        while self._running:
+            await asyncio.sleep(60)
+            if self._pending:
+                logger.warning("Auto-unlocking pending (stuck for >60s)")
+                self._pending = False
 
     def get_config(self) -> dict:
         return {
