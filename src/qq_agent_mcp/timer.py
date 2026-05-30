@@ -66,6 +66,7 @@ class TimerScheduler:
             interval_seconds=interval_seconds,
             message=message,
             once=once,
+            last_fired=time.time() if interval_seconds is not None else None,
         )
         self._tasks.append(task)
         self._save()
