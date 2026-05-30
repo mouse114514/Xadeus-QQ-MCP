@@ -395,6 +395,19 @@ class WakeMonitor:
         self._pending = pending
         logger.info("Wake pending set to %s", pending)
 
+    async def wake_with_message(self, text: str) -> bool:
+        """直接唤醒窗口并输入指定文本（用于定时任务等）。"""
+        loop = asyncio.get_event_loop()
+        try:
+            ok = await loop.run_in_executor(
+                None, _type_via_clipboard, text, self.config.window_title_patterns,
+            )
+            logger.info("Wake via message: %s (ok=%s)", text, ok)
+            return ok
+        except Exception as e:
+            logger.error("Wake via message error: %s", e)
+            return False
+
     async def _trigger(self, rule: WakeRule, target_type: str, target_id: str, msg: Message) -> None:
         text = self._format_wake_message(rule, target_type, target_id, msg)
         logger.info("Wake triggered: %s", text)

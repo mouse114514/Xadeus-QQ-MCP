@@ -9,6 +9,7 @@ from mcp.server.fastmcp import FastMCP
 from .config import Config
 from .context import ContextManager
 from .onebot import OneBotClient
+from .timer import TimerScheduler
 from .tools import register_tools
 from .wake import WakeMonitor
 
@@ -46,6 +47,8 @@ def create_server(config: Config) -> FastMCP:
     browser_holder: dict = {"browser": None, "pw": None}
     # Wake monitor for auto-wake on matching messages
     wake_monitor = WakeMonitor(ctx)
+    # Timer scheduler for timed tasks
+    timer_scheduler = TimerScheduler(wake_monitor)
 
     @asynccontextmanager
     async def lifespan(app: FastMCP):
@@ -54,11 +57,13 @@ def create_server(config: Config) -> FastMCP:
         await ctx.backfill_history(bot)
         ctx.start()
         wake_monitor.start()
+        timer_scheduler.start()
         logger.info("Context manager started (WS: %s)", config.ws_url)
         try:
-            yield {"browser_holder": browser_holder, "wake_monitor": wake_monitor}
+            yield {"browser_holder": browser_holder, "wake_monitor": wake_monitor, "timer_scheduler": timer_scheduler}
         finally:
-            # Shutdown: stop WebSocket listener, wake monitor, browser, and HTTP client
+            # Shutdown: stop timer scheduler, WebSocket listener, wake monitor, browser, and HTTP client
+            await timer_scheduler.stop()
             await wake_monitor.stop()
             if browser_holder["browser"]:
                 await browser_holder["browser"].close()
@@ -72,7 +77,7 @@ def create_server(config: Config) -> FastMCP:
     mcp = FastMCP("qq-agent-mcp", lifespan=lifespan)
 
     # Register all MCP tools
-    register_tools(mcp, config, bot, ctx, browser_holder, wake_monitor)
+    register_tools(mcp, config, bot, ctx, browser_holder, wake_monitor, timer_scheduler)
 
     return mcp
 

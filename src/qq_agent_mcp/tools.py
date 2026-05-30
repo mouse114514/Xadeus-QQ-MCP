@@ -286,6 +286,7 @@ def register_tools(
     mcp: Any, config: Config, bot: OneBotClient, ctx: ContextManager,
     browser_holder: dict | None = None,
     wake_monitor: Any = None,
+    timer_scheduler: Any = None,
 ) -> None:
     """Register all MCP tools on the FastMCP server instance."""
 
@@ -1422,6 +1423,45 @@ def register_tools(
                 }
             except Exception as e:
                 return {"success": False, "error": str(e)}
+
+    if timer_scheduler is not None:
+
+        @mcp.tool()
+        async def add_timer(
+            message: str,
+            cron_expr: str | None = None,
+            interval_seconds: int | None = None,
+        ) -> dict:
+            """添加定时任务。到时间通过 wake 唤醒 agent。
+
+            支持 cron 和间隔两种模式：
+            - cron_expr: "0 8 * * *" = 每天早上8点
+            - interval_seconds: 3600 = 每小时
+
+            Args:
+                message: 触发时发送给 agent 的内容。
+                cron_expr: cron 表达式 "minute hour * * *"。
+                interval_seconds: 间隔秒数。
+            """
+            if not cron_expr and not interval_seconds:
+                return {"success": False, "error": "需要 cron_expr 或 interval_seconds"}
+            tid = timer_scheduler.add(cron_expr, interval_seconds, message)
+            return {"success": True, "task_id": tid}
+
+        @mcp.tool()
+        async def remove_timer(index: int) -> dict:
+            """删除定时任务。
+
+            Args:
+                index: 任务索引（从 list_timers 获取）。
+            """
+            ok = timer_scheduler.remove(index)
+            return {"success": ok}
+
+        @mcp.tool()
+        async def list_timers() -> dict:
+            """列出所有定时任务。"""
+            return {"timers": timer_scheduler.list_tasks()}
 
 
 async def _llm_compress(ctx_mcp: Context, messages: list) -> str:
