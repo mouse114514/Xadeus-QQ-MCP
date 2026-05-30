@@ -6,6 +6,7 @@ import ctypes.wintypes
 import json
 import logging
 import os
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Callable
@@ -13,6 +14,9 @@ from typing import Callable
 from .context import ContextManager, Message
 
 logger = logging.getLogger(__name__)
+
+# ── Thread lock for clipboard/window operations ──────────
+_CLIPBOARD_LOCK = threading.Lock()
 
 # ── Win32 API ──────────────────────────────────────────────
 _user32 = ctypes.windll.user32
@@ -123,30 +127,38 @@ def _send_ctrl_combo(vk: int) -> None:
 
 def _type_via_clipboard(text: str, patterns: list[str] | None = None) -> bool:
     """Focus → CTRL+L → set clipboard → CTRL+V."""
-    hwnd = _find_target_hwnd(patterns)
-    if hwnd is None:
-        logger.warning("opencode window not found")
+    acquired = _CLIPBOARD_LOCK.acquire(blocking=False)
+    if not acquired:
+        logger.warning("Clipboard operation already in progress, skipping")
         return False
 
-    if not _activate_window(hwnd):
-        return False
+    try:
+        hwnd = _find_target_hwnd(patterns)
+        if hwnd is None:
+            logger.warning("opencode window not found")
+            return False
 
-    time.sleep(0.15)
-    _send_ctrl_combo(VK_L)  # 聚焦输入框
-    time.sleep(0.1)
+        if not _activate_window(hwnd):
+            return False
 
-    if not _set_clipboard(text):
-        return False
+        time.sleep(0.2)
+        _send_ctrl_combo(VK_L)  # 聚焦输入框
+        time.sleep(0.15)
 
-    time.sleep(0.05)
-    _send_ctrl_combo(VK_V)  # 粘贴
-    time.sleep(0.1)
-    # 按 Enter 发送消息
-    _send_key(VK_RETURN)
-    time.sleep(0.03)
-    _send_key(VK_RETURN, up=True)
-    time.sleep(0.1)
-    return True
+        if not _set_clipboard(text):
+            return False
+
+        time.sleep(0.1)
+        _send_ctrl_combo(VK_V)  # 粘贴
+        time.sleep(0.15)
+        # 按 Enter 发送消息
+        _send_key(VK_RETURN)
+        time.sleep(0.05)
+        _send_key(VK_RETURN, up=True)
+        time.sleep(0.1)
+        return True
+    finally:
+        _CLIPBOARD_LOCK.release()
 
 
 # ── 规则系统 ──────────────────────────────────────────────
