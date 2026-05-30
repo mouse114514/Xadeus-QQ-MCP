@@ -1208,6 +1208,152 @@ def register_tools(
             wake_monitor.set_config(window_title_patterns, focus_shortcut)
             return {"success": True, "config": wake_monitor.get_config()}
 
+        # ── 群管理 ──────────────────────────────────────────
+
+        @mcp.tool()
+        async def mute_member(
+            group_id: str,
+            user_id: str,
+            duration: int = 600,
+        ) -> dict:
+            """禁言群成员。
+
+            Args:
+                group_id: 群号。
+                user_id: 被禁言的 QQ 号。
+                duration: 禁言时长（秒），默认 600 秒（10分钟）。
+            """
+            try:
+                await bot.set_group_ban(group_id, user_id, duration)
+                return {"success": True, "group_id": group_id, "user_id": user_id, "duration": duration}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+
+        @mcp.tool()
+        async def unmute_member(group_id: str, user_id: str) -> dict:
+            """解除群成员禁言。
+
+            Args:
+                group_id: 群号。
+                user_id: 被解禁的 QQ 号。
+            """
+            try:
+                await bot.set_group_ban(group_id, user_id, 0)
+                return {"success": True, "group_id": group_id, "user_id": user_id}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+
+        @mcp.tool()
+        async def kick_member(
+            group_id: str, user_id: str, reject_add_request: bool = False,
+        ) -> dict:
+            """踢出群成员。
+
+            Args:
+                group_id: 群号。
+                user_id: 被踢的 QQ 号。
+                reject_add_request: 是否拒绝再次加群请求。
+            """
+            try:
+                await bot.set_group_kick(group_id, user_id, reject_add_request)
+                action = "并拉黑" if reject_add_request else ""
+                return {"success": True, "group_id": group_id, "user_id": user_id, "action": f"已踢出{action}"}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+
+        @mcp.tool()
+        async def set_member_card(group_id: str, user_id: str, card: str = "") -> dict:
+            """设置群成员名片（群昵称）。空字符串清除名片。
+
+            Args:
+                group_id: 群号。
+                user_id: 目标 QQ 号。
+                card: 新名片文字，空字符串表示清除。
+            """
+            try:
+                await bot.set_group_card(group_id, user_id, card)
+                return {"success": True, "group_id": group_id, "user_id": user_id, "card": card or "(已清除)"}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+
+        @mcp.tool()
+        async def send_group_notice(group_id: str, content: str) -> dict:
+            """发送群公告。
+
+            Args:
+                group_id: 群号。
+                content: 公告内容。
+            """
+            try:
+                await bot.send_group_notice(group_id, content)
+                return {"success": True, "group_id": group_id}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+
+        # ── 消息撤回 ──────────────────────────────────────
+
+        @mcp.tool()
+        async def recall_message(message_id: str) -> dict:
+            """撤回消息。发错了能撤回来，仅限机器人发送的消息或管理员。
+
+            Args:
+                message_id: 要撤回的消息 ID。
+            """
+            try:
+                await bot.delete_msg(message_id)
+                return {"success": True, "message_id": message_id}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+
+        # ── 群成员查询 ────────────────────────────────────
+
+        @mcp.tool()
+        async def get_group_member_list(group_id: str) -> dict:
+            """获取群成员列表。
+
+            Args:
+                group_id: 群号。
+            """
+            try:
+                members = await bot.get_group_member_list(group_id)
+                summary = [
+                    {
+                        "user_id": str(m.get("user_id", "")),
+                        "nickname": m.get("nickname", ""),
+                        "card": m.get("card", ""),
+                        "role": m.get("role", ""),
+                    }
+                    for m in members
+                ]
+                return {"success": True, "group_id": group_id, "member_count": len(summary), "members": summary}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+
+        @mcp.tool()
+        async def get_group_member_info(group_id: str, user_id: str) -> dict:
+            """获取指定群成员详细信息。
+
+            Args:
+                group_id: 群号。
+                user_id: 目标 QQ 号。
+            """
+            try:
+                info = await bot.get_group_member_info(group_id, user_id)
+                return {
+                    "success": True,
+                    "group_id": group_id,
+                    "user_id": str(info.get("user_id", "")),
+                    "nickname": info.get("nickname", ""),
+                    "card": info.get("card", ""),
+                    "role": info.get("role", ""),
+                    "join_time": info.get("join_time", 0),
+                    "last_sent_time": info.get("last_sent_time", 0),
+                    "level": info.get("level", ""),
+                    "title": info.get("title", ""),
+                }
+            except Exception as e:
+                return {"success": False, "error": str(e)}
+
 
 async def _llm_compress(ctx_mcp: Context, messages: list) -> str:
     """Use the client's LLM (via MCP sampling) to compress messages into a summary."""

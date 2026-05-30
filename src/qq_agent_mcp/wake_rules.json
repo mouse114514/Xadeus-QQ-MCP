@@ -11,7 +11,8 @@
     "target_id": "1084619753",
     "keywords": [
       "X studio AI",
-      "bot"
+      "bot",
+      "@me"
     ],
     "enabled": true,
     "ignore_if_focused": true

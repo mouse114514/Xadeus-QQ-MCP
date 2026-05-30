@@ -138,3 +138,58 @@ class OneBotClient:
         """
         data = await self._call("get_forward_msg", id=id)
         return data.get("messages", data.get("message", [])) if data else []
+
+    # ── Moderation ───────────────────────────────────────────
+
+    async def set_group_ban(
+        self, group_id: str, user_id: str, duration: int = 1800,
+    ) -> dict:
+        """禁言成员 (duration=0 解禁)."""
+        return await self._call(
+            "set_group_ban",
+            group_id=int(group_id), user_id=int(user_id), duration=duration,
+        )
+
+    async def set_group_kick(
+        self, group_id: str, user_id: str, reject_add_request: bool = False,
+    ) -> dict:
+        """踢出群成员."""
+        return await self._call(
+            "set_group_kick",
+            group_id=int(group_id), user_id=int(user_id),
+            reject_add_request=reject_add_request,
+        )
+
+    async def set_group_card(
+        self, group_id: str, user_id: str, card: str = "",
+    ) -> dict:
+        """设置群名片 (空字符串清除)."""
+        return await self._call(
+            "set_group_card",
+            group_id=int(group_id), user_id=int(user_id), card=card,
+        )
+
+    async def send_group_notice(
+        self, group_id: str, content: str,
+    ) -> dict:
+        """发送群公告 (NapCat 扩展 API)."""
+        return await self._call(
+            "_send_group_notice", group_id=int(group_id), content=content,
+        )
+
+    async def delete_msg(self, message_id: str) -> dict:
+        """撤回消息."""
+        return await self._call("delete_msg", message_id=int(message_id))
+
+    async def get_group_member_list(self, group_id: str) -> list[dict]:
+        """获取群成员列表."""
+        return await self._call("get_group_member_list", group_id=int(group_id))
+
+    async def get_group_member_info(
+        self, group_id: str, user_id: str,
+    ) -> dict:
+        """获取指定群成员信息."""
+        return await self._call(
+            "get_group_member_info",
+            group_id=int(group_id), user_id=int(user_id),
+        )
