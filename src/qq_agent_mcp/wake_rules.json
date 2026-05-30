@@ -3,6 +3,17 @@
     "target_type": "private",
     "target_id": "1745557997",
     "keywords": [],
-    "enabled": true
+    "enabled": true,
+    "ignore_if_focused": true
+  },
+  {
+    "target_type": "group",
+    "target_id": "1084619753",
+    "keywords": [
+      "X studio AI",
+      "bot"
+    ],
+    "enabled": true,
+    "ignore_if_focused": true
   }
 ]

@@ -360,6 +360,10 @@ class WakeMonitor:
     def is_pending(self) -> bool:
         return self._pending
 
+    def is_relevant(self, target_type: str, target_id: str, msg: "Message") -> bool:
+        """检查消息是否匹配任意一条启用的规则。"""
+        return self._matches_rule(target_type, target_id, msg) is not None
+
     def clear_pending(self) -> None:
         """Agent 调用 QQ 发送工具时调用此方法，解除 pending 允许下次唤醒。"""
         self._pending = False

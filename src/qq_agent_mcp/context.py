@@ -347,8 +347,13 @@ class ContextManager:
 
     async def wait_for_new_message(
         self, target: str, target_type: str, since: float, timeout: float = 120.0,
+        relevant_fn: Callable[[Message], bool] | None = None,
     ) -> tuple[list[Message], bool]:
-        """Wait for a new non-self message from target. Returns (messages, timed_out)."""
+        """Wait for a new non-self message from target. Returns (messages, timed_out).
+
+        If relevant_fn is provided, only messages matching the predicate
+        will be returned; non-matching messages are silently skipped.
+        """
         key = self._buffer_key(target_type, target)
         event = self._new_msg_events.get(key)
         if event is None:
@@ -357,16 +362,33 @@ class ContextManager:
 
         existing = self.get_messages_since(target, target_type, since)
         if existing:
-            return existing, False
+            if relevant_fn is None:
+                return existing, False
+            matched = [m for m in existing if relevant_fn(m)]
+            if matched:
+                return matched, False
 
-        event.clear()
-        try:
-            await asyncio.wait_for(event.wait(), timeout=timeout)
-        except asyncio.TimeoutError:
-            return [], True
+        deadline = time.time() + timeout if timeout is not None else float("inf")
+        while time.time() < deadline:
+            remaining = deadline - time.time()
+            if remaining <= 0:
+                return [], True
+            event.clear()
+            try:
+                await asyncio.wait_for(event.wait(), timeout=min(remaining, timeout if timeout else 120.0))
+            except asyncio.TimeoutError:
+                return [], True
 
-        new_msgs = self.get_messages_since(target, target_type, since)
-        return new_msgs, False
+            new_msgs = self.get_messages_since(target, target_type, since)
+            if not new_msgs:
+                continue
+            if relevant_fn is None:
+                return new_msgs, False
+            matched = [m for m in new_msgs if relevant_fn(m)]
+            if matched:
+                return matched, False
+            # non-matching messages: keep waiting
+        return [], True
 
     @property
     def buffer_stats(self) -> dict:

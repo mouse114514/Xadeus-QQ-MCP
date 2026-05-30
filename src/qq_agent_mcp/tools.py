@@ -9,7 +9,7 @@ import time
 import unicodedata
 from collections import deque
 from datetime import datetime, timezone, timedelta
-from typing import Any
+from typing import Any, Callable
 
 from mcp.server.fastmcp import Context
 from mcp.types import SamplingMessage, TextContent
@@ -260,6 +260,19 @@ def _decide_chunks(
         return _chunk_message(content)
 
     return [stripped] if stripped else []
+
+
+def _make_relevant_fn(target_type: str, target: str, wake_monitor) -> Callable | None:
+    """创建 wait_for_reply 的消息过滤函数：私聊全收，群聊按 wake 规则过滤。"""
+    if wake_monitor is None:
+        return None
+
+    def relevant(msg: Message) -> bool:
+        if target_type == "private":
+            return True
+        return wake_monitor.is_relevant(target_type, target, msg)
+
+    return relevant
 
 
 def register_tools(
@@ -659,8 +672,10 @@ def register_tools(
         # Auto-wait for reply unless explicitly disabled
         if wait_reply:
             wait_since = time.time()
+            _relevant = _make_relevant_fn(target_type, target, wake_monitor)
             reply_msgs, timed_out = await ctx.wait_for_new_message(
                 target, target_type, wait_since, timeout=None,
+                relevant_fn=_relevant,
             )
             result["reply"] = {
                 "messages": [m.to_dict() for m in reply_msgs if not m.is_self],
@@ -704,7 +719,10 @@ def register_tools(
 
         timeout = max(1.0, min(timeout, 300.0))
         since = time.time()
-        messages, timed_out = await ctx.wait_for_new_message(target, target_type, since, timeout)
+        _relevant = _make_relevant_fn(target_type, target, wake_monitor)
+        messages, timed_out = await ctx.wait_for_new_message(
+            target, target_type, since, timeout, relevant_fn=_relevant,
+        )
 
         # 收到回复后自动解锁 pending
         if wake_monitor and not timed_out and messages:
