@@ -125,8 +125,20 @@ def _send_ctrl_combo(vk: int) -> None:
     time.sleep(0.05)
 
 
+_last_paste_text: str = ""
+_last_paste_time: float = 0.0
+
+
 def _type_via_clipboard(text: str, patterns: list[str] | None = None) -> bool:
     """Focus → CTRL+L → set clipboard → CTRL+V."""
+    global _last_paste_text, _last_paste_time
+
+    # 文本去重：同一内容 3 秒内不重复粘贴
+    now = time.time()
+    if text == _last_paste_text and (now - _last_paste_time) < 3.0:
+        logger.warning("Duplicate paste suppressed (same text within 3s)")
+        return False
+
     acquired = _CLIPBOARD_LOCK.acquire(blocking=False)
     if not acquired:
         logger.warning("Clipboard operation already in progress, skipping")
@@ -156,6 +168,9 @@ def _type_via_clipboard(text: str, patterns: list[str] | None = None) -> bool:
         time.sleep(0.05)
         _send_key(VK_RETURN, up=True)
         time.sleep(0.1)
+
+        _last_paste_text = text
+        _last_paste_time = time.time()
         return True
     finally:
         _CLIPBOARD_LOCK.release()
