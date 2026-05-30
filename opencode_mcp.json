@@ -1,0 +1,21 @@
+﻿{
+    "mcpServers":  {
+                       "qq-agent":  {
+                                        "args":  [
+                                                     "-m",
+                                                     "qq_agent_mcp",
+                                                     "--qq",
+                                                     "1745557997",
+                                                     "--napcat-host",
+                                                     "127.0.0.1",
+                                                     "--napcat-port",
+                                                     "3000",
+                                                     "--ws-port",
+                                                     "3001",
+                                                     "--log-level",
+                                                     "info"
+                                                 ],
+                                        "command":  "C:\\Users\\Administrator\\Desktop\\work\\Xadeus-QQ-MCP\\.venv\\Scripts\\python.exe"
+                                    }
+                   }
+}

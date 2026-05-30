@@ -1,0 +1,39 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.venv/
+
+# uv
+uv.lock
+
+# macOS
+.DS_Store
+
+# NapCat runtime data & config (keep folder structure, ignore contents)
+napcat/config/*
+napcat/qq-data/*
+!napcat/config/.gitkeep
+!napcat/qq-data/.gitkeep
+!napcat/README.md
+
+# Docker Compose (contains account-specific config)
+docker-compose.yml
+
+# MCP client config (contains account-specific paths)
+mcp.json
+
+# IDE
+.idea/
+.vscode/
+
+# Claude Code
+.claude/
+
+# SQLite databases (dev artifacts)
+*.db
+*.db-shm
+*.db-wal
