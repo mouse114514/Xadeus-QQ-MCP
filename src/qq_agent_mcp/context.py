@@ -60,13 +60,14 @@ class MessageBuffer:
         self._compress_pending = False
         self._compress_all_pending = False
 
-    def add(self, msg: Message) -> None:
+    def add(self, msg: Message) -> bool:
         """Add a message with dedup by message_id.
 
         Marks compression as pending when threshold is reached.
+        Returns True if message was added, False if duplicate.
         """
         if msg.message_id and msg.message_id in self._seen_ids:
-            return  # duplicate (e.g. direct write + WebSocket echo)
+            return False  # duplicate (e.g. direct write + WebSocket echo)
         if msg.message_id:
             self._seen_ids.add(msg.message_id)
             # Prevent unbounded growth — trim oldest IDs when set is large
@@ -78,6 +79,7 @@ class MessageBuffer:
 
         if self._msg_since_compress >= self._compress_every:
             self._compress_pending = True
+        return True
 
     def mark_all_for_compress(self) -> None:
         """Mark all current messages for compression (used after backfill)."""
@@ -495,7 +497,8 @@ class ContextManager:
 
         key = self._buffer_key("group", group_id)
         buf = self._get_or_create_buffer(key)
-        buf.add(msg)
+        if not buf.add(msg):  # duplicate, skip callback and event
+            return
         self._fire_new_msg_event(key)
         if self._on_message and not msg.is_self:
             self._on_message("group", group_id, msg)
@@ -538,7 +541,8 @@ class ContextManager:
 
         key = self._buffer_key("private", sender_id)
         buf = self._get_or_create_buffer(key)
-        buf.add(msg)
+        if not buf.add(msg):  # duplicate, skip callback and event
+            return
         self._fire_new_msg_event(key)
         if self._on_message and not msg.is_self:
             self._on_message("private", sender_id, msg)

@@ -226,6 +226,7 @@ class WakeMonitor:
         self._on_wake = on_wake
         self._pending = False
         self._auto_unlock_task: asyncio.Task | None = None
+        self._woke_ids: set[str] = set()  # 已触发的 message_id，防重复
         self.config = WakeConfig.load()
         # 注册消息回调（消息入库时直接触发，无需轮询）
         ctx.set_message_callback(self._on_incoming_message)
@@ -238,9 +239,18 @@ class WakeMonitor:
             return
         if self._pending:
             return
+        # NapCat 有时会重复推送同一条消息，通过 message_id 去重
+        if msg.message_id and msg.message_id in self._woke_ids:
+            logger.debug("Duplicate wake skipped (msg_id=%s)", msg.message_id)
+            return
         matched = self._matches_rule(target_type, target_id, msg)
         if matched is None:
             return
+        if msg.message_id:
+            self._woke_ids.add(msg.message_id)
+            # 防止无限增长
+            if len(self._woke_ids) > 200:
+                self._woke_ids.clear()
         self._pending = True
         asyncio.create_task(self._trigger(matched, target_type, target_id, msg))
 
