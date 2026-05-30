@@ -234,10 +234,7 @@ class WakeMonitor:
         self._load_rules()
 
     def _wake_key(self, target_type: str, target_id: str, msg: Message) -> str:
-        """生成去重 key：优先 message_id，否则用内容 hash。"""
-        if msg.message_id:
-            return msg.message_id
-        # message_id 为空时用内容 hash 去重
+        """生成去重 key：始终用内容 hash（NapCat 可能给同一条消息不同 message_id）。"""
         import hashlib
         raw = f"{target_type}:{target_id}:{msg.sender_id}:{msg.content}"
         return hashlib.md5(raw.encode()).hexdigest()
@@ -256,9 +253,9 @@ class WakeMonitor:
         if matched is None:
             return
         self._woke_ids.add(wake_key)
-        # 防止无限增长
-        if len(self._woke_ids) > 200:
-            self._woke_ids.clear()
+        # 防止无限增长：保留最近 100 条
+        if len(self._woke_ids) > 100:
+            self._woke_ids = set(list(self._woke_ids)[-100:])
         self._pending = True
         asyncio.create_task(self._trigger(matched, target_type, target_id, msg))
 
