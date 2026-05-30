@@ -262,6 +262,12 @@ def _decide_chunks(
     return [stripped] if stripped else []
 
 
+def _write_file(path: str, data: bytes) -> None:
+    """同步写文件（在 executor 中运行）。"""
+    with open(path, "wb") as f:
+        f.write(data)
+
+
 def _make_relevant_fn(target_type: str, target: str, wake_monitor) -> Callable | None:
     """创建 wait_for_reply 的消息过滤函数：私聊全收，群聊按 wake 规则过滤。"""
     if wake_monitor is None:
@@ -885,6 +891,68 @@ def register_tools(
             "target": target,
             "target_type": target_type,
             "timestamp": datetime.now(CST).isoformat(),
+        }
+
+    @mcp.tool()
+    async def send_file(
+        target: str,
+        file_url: str,
+        file_name: str | None = None,
+        target_type: str = "group",
+    ) -> dict:
+        """下载 URL 文件并发送到群或私聊。
+
+        从 URL 下载文件然后上传到 QQ。支持任意文件类型。
+
+        Args:
+            target: 群号或 QQ 号。
+            file_url: 文件的直接下载 URL。
+            file_name: 文件名（可选，默认从 URL 提取）。
+            target_type: "group"（默认）或 "private"。
+        """
+        import os
+        import tempfile
+
+        if target_type == "group":
+            if not config.is_group_monitored(target):
+                return {"success": False, "error": f"Group {target} is not monitored"}
+        elif target_type == "private":
+            if not config.is_friend_monitored(target):
+                return {"success": False, "error": f"User {target} is not in friends whitelist"}
+        else:
+            return {"success": False, "error": f"Invalid target_type: {target_type}"}
+
+        name = file_name or os.path.basename(file_url.split("?")[0]) or "file"
+        tmp = tempfile.mkdtemp()
+        local_path = os.path.join(tmp, name)
+
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.get(file_url, timeout=aiohttp.ClientTimeout(total=60)) as resp:
+                    if resp.status != 200:
+                        return {"success": False, "error": f"Download failed: HTTP {resp.status}"}
+                    data = await resp.read()
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(None, _write_file, local_path, data)
+
+            if target_type == "group":
+                await bot.upload_group_file(target, local_path, name)
+            else:
+                await bot.upload_private_file(target, local_path, name)
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+        finally:
+            try:
+                os.remove(local_path)
+                os.rmdir(tmp)
+            except Exception:
+                pass
+
+        return {
+            "success": True,
+            "file_name": name,
+            "target": target,
+            "target_type": target_type,
         }
 
     @mcp.tool()

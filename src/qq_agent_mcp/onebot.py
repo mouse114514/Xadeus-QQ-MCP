@@ -139,6 +139,24 @@ class OneBotClient:
         data = await self._call("get_forward_msg", id=id)
         return data.get("messages", data.get("message", [])) if data else []
 
+    # ── File upload (NapCat extension) ───────────────────────
+
+    async def upload_group_file(
+        self, group_id: str, file_path: str, name: str,
+    ) -> dict:
+        """上传文件到群。file_path 是服务器上的本地路径。"""
+        return await self._call(
+            "upload_group_file", group_id=int(group_id), file=file_path, name=name,
+        )
+
+    async def upload_private_file(
+        self, user_id: str, file_path: str, name: str,
+    ) -> dict:
+        """上传文件到私聊。file_path 是服务器上的本地路径。"""
+        return await self._call(
+            "upload_private_file", user_id=int(user_id), file=file_path, name=name,
+        )
+
     # ── Moderation ───────────────────────────────────────────
 
     async def set_group_ban(
