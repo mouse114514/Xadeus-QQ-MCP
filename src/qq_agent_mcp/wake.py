@@ -233,24 +233,32 @@ class WakeMonitor:
         # 持久化规则加载
         self._load_rules()
 
+    def _wake_key(self, target_type: str, target_id: str, msg: Message) -> str:
+        """生成去重 key：优先 message_id，否则用内容 hash。"""
+        if msg.message_id:
+            return msg.message_id
+        # message_id 为空时用内容 hash 去重
+        import hashlib
+        raw = f"{target_type}:{target_id}:{msg.sender_id}:{msg.content}"
+        return hashlib.md5(raw.encode()).hexdigest()
+
     def _on_incoming_message(self, target_type: str, target_id: str, msg: Message) -> None:
         """Called by ContextManager for every incoming non-self message."""
         if not self._running:
             return
         if self._pending:
             return
-        # NapCat 有时会重复推送同一条消息，通过 message_id 去重
-        if msg.message_id and msg.message_id in self._woke_ids:
-            logger.debug("Duplicate wake skipped (msg_id=%s)", msg.message_id)
+        wake_key = self._wake_key(target_type, target_id, msg)
+        if wake_key in self._woke_ids:
+            logger.debug("Duplicate wake skipped (key=%s)", wake_key)
             return
         matched = self._matches_rule(target_type, target_id, msg)
         if matched is None:
             return
-        if msg.message_id:
-            self._woke_ids.add(msg.message_id)
-            # 防止无限增长
-            if len(self._woke_ids) > 200:
-                self._woke_ids.clear()
+        self._woke_ids.add(wake_key)
+        # 防止无限增长
+        if len(self._woke_ids) > 200:
+            self._woke_ids.clear()
         self._pending = True
         asyncio.create_task(self._trigger(matched, target_type, target_id, msg))
 
