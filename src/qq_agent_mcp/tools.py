@@ -11,6 +11,7 @@ from collections import deque
 from datetime import datetime, timezone, timedelta
 from typing import Any, Callable
 
+import aiohttp
 from mcp.server.fastmcp import Context
 from mcp.types import SamplingMessage, TextContent
 
