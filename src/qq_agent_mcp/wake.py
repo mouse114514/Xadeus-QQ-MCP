@@ -373,16 +373,20 @@ class WakeMonitor:
             self._reply_sent_time = 0.0
             self._reply_target = None
 
-        # ── 锁检查：锁定中则跳过（仅超时解锁） ──
+        # ── 锁检查 ──
         if self._pending:
-            return
+            # @提及 跳过锁直接唤醒
+            if msg.is_at_me:
+                logger.info("At-mention bypasses pending lock")
+            else:
+                return
 
         matched = self._matches_rule(target_type, target_id, msg)
         if matched is None:
             return
 
         # ── 模型正在等回复时不唤醒 ──
-        if self._waiting_for_reply:
+        if self._waiting_for_reply and not msg.is_at_me:
             logger.info("Model is waiting for a reply, skipping wake")
             return
 
