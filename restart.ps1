@@ -1,18 +1,13 @@
-&lt;#
-.SYNOPSIS
-    Restart the Xadeus-QQ-MCP service.
-.DESCRIPTION
-    Kills all stale MCP python processes, then waits for opencode
-    (or your AI agent) to auto-restart the MCP subprocess.
-    If auto-restart fails, prompts you to restart the agent manually.
-#&gt;
+# Xadeus-QQ-MCP Restart Helper
+# Kills stale MCP processes, waits for auto-restart.
+# If auto-restart fails, prompts manual restart.
 
-$VENV_PY = Join-Path $PSScriptRoot ".venv" "Scripts" "python.exe"
-$PROJECT = Split-Path $PSScriptRoot -Leaf
+$VENV_PY = Join-Path -Path $PSScriptRoot -ChildPath ".venv\Scripts\python.exe"
+$PROJECT = Split-Path -Path $PSScriptRoot -Leaf
 
 Write-Host "=== Xadeus-QQ-MCP Restart Helper ===" -ForegroundColor Cyan
 
-# ── 1. Kill all MCP processes ──
+# Step 1: Kill all stale MCP processes
 $procs = Get-CimInstance Win32_Process -Filter "Name='python.exe' AND CommandLine LIKE '%qq_agent_mcp%'"
 if ($procs) {
     Write-Host "Killing $($procs.Count) stale MCP process(es)..." -ForegroundColor Yellow
@@ -23,8 +18,8 @@ if ($procs) {
     Write-Host "No stale MCP processes found." -ForegroundColor Green
 }
 
-# ── 2. Wait for auto-restart ──
-Write-Host "Waiting for opencode to auto-restart the MCP subprocess..." -ForegroundColor Cyan
+# Step 2: Wait for opencode to auto-restart
+Write-Host "Waiting for opencode to auto-restart MCP..." -ForegroundColor Cyan
 $found = $false
 for ($i = 0; $i -lt 15; $i++) {
     Start-Sleep 2
@@ -41,12 +36,10 @@ if (-not $found) {
     Write-Host "WARNING: opencode did not auto-restart the MCP subprocess." -ForegroundColor Red
     Write-Host "This is normal after multiple restarts (opencode uses restart backoff)." -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "To fix: restart your AI agent (opencode / Cursor / Claude Desktop)." -ForegroundColor Yellow
+    Write-Host "Solution: restart your AI agent (opencode / Cursor / Claude Desktop)." -ForegroundColor Yellow
     Write-Host ""
-    Write-Host "  If you are using opencode CLI:" -ForegroundColor Cyan
-    Write-Host "  1. Restart opencode (the MCP will start automatically with the new session)" -ForegroundColor White
-    Write-Host "  2. The QQ_OVERRIDE env var avoids needing to edit --qq in config" -ForegroundColor White
-    Write-Host ""
-    Write-Host "  Environment variable (optional, set before starting agent):" -ForegroundColor Cyan
-    Write-Host "    `$env:QQ_OVERRIDE = `"YOUR_QQ_NUMBER`"" -ForegroundColor White
+    Write-Host "  If using opencode CLI:" -ForegroundColor Cyan
+    Write-Host "  1. Restart opencode (MCP will auto-start)" -ForegroundColor White
+    Write-Host "  2. Set QQ_OVERRIDE env var before starting:" -ForegroundColor White
+    Write-Host "     `$env:QQ_OVERRIDE = `"YOUR_QQ_NUMBER`"" -ForegroundColor White
 }
