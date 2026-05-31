@@ -9,6 +9,9 @@ param(
     [switch]$help
 )
 
+# --help is not a standard PowerShell switch, check raw args manually
+if (-not $help -and ($args -contains "--help")) { $help = $true }
+
 if ($help) {
     @"
 Xadeus-QQ-MCP Quick Start
