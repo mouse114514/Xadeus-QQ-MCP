@@ -4,6 +4,7 @@ param(
     [string]$napcatDir,
     [int]$httpPort = 3000,
     [int]$wsPort = 3001,
+    [string]$windowTitle = "OC,opencode,Administrator,cmd,管理员",
     [switch]$restart,
     [switch]$help
 )
@@ -13,9 +14,13 @@ if ($help) {
 Xadeus-QQ-MCP Quick Start
 
 Usage:
-    .\quickstart.ps1 -qq 123456           # Full setup (NapCat + venv + config)
-    .\quickstart.ps1 -qq 123456 -restart   # Kill stale MCP + wait for recovery
-    .\quickstart.ps1 -configFile cfg.json  # Setup from config file
+    .\quickstart.ps1 -qq 123456                                          # Full setup
+    .\quickstart.ps1 -qq 123456 -windowTitle "OC,opencode,cmd"           # Custom window patterns
+    .\quickstart.ps1 -qq 123456 -restart                                  # Kill stale MCP
+    .\quickstart.ps1 -configFile cfg.json                                 # Setup from config file
+
+Options:
+    -windowTitle   Comma-separated window title substrings (default: OC,opencode,Administrator,cmd,管理员)
 
 Config file format (cfg.json):
     { "qq": "123456", "napcat_path": "C:\\NapCatQQ", "http_port": 3000, "ws_port": 3001 }
@@ -171,7 +176,16 @@ if ($content -match "QQ_OVERRIDE = os\.environ\.get\(""QQ_OVERRIDE"") or ""([^""
     }
 }
 
-# ── Step 6: Write batch to start NapCat ──
+# ── Step 6: Write wake_config.json (window title patterns) ──
+$wakeConfig = @{
+    window_title_patterns = $windowTitle -split ',' | ForEach-Object { $_.Trim() }
+    focus_shortcut = "ctrl+l"
+}
+$wakeFile = Join-Path -Path $ROOT -ChildPath "src\qq_agent_mcp\wake_config.json"
+$wakeConfig | ConvertTo-Json | Set-Content $wakeFile -Encoding UTF8
+Write-Host "Wake config written: $($wakeConfig.window_title_patterns -join ', ')" -ForegroundColor Green
+
+# ── Step 7: Write batch to start NapCat ──
 $napcatInternal = Join-Path -Path $napcatDir -ChildPath "versions\$versionDir\resources\app\napcat"
 $loadJs = Join-Path -Path $napcatInternal -ChildPath "loadNapCat.js"
 $napcatMjs = "file:///$($napcatInternal.Replace('\', '/'))/napcat.mjs"
@@ -188,7 +202,7 @@ $batFile = Join-Path -Path $ROOT -ChildPath "start_napcat.bat"
 Set-Content $batFile -Value $batContent -Encoding Default
 Write-Host "NapCat start script: $batFile" -ForegroundColor Green
 
-# ── Step 7: Print instructions ──
+# ── Step 8: Print instructions ──
 Write-Host ""
 Write-Host "=== Setup Complete ===" -ForegroundColor Cyan
 Write-Host ""

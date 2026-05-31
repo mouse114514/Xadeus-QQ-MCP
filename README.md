@@ -47,17 +47,17 @@ QQ ←→ NapCat (OneBot v11)
 ```
 
 Auto-detects NapCat, configures HTTP:3000/WS:3001, creates Python venv,
-writes QQ_OVERRIDE, generates NapCat start script.
+writes QQ_OVERRIDE, generates NapCat start script, sets window wake patterns.
 
-Or with a config file:
+Options:
 ```powershell
-.\quickstart.ps1 -configFile config.json
+.\quickstart.ps1 -qq 123456 -windowTitle "OC,opencode,cmd"   # Custom window patterns
+.\quickstart.ps1 -configFile config.json                      # Config file mode
+.\quickstart.ps1 -restart                                     # Kill stale MCP + wait for recovery
 ```
 
-**Restart helper** (kill stale MCP + wait for recovery):
-```powershell
-.\quickstart.ps1 -restart
-```
+Default `-windowTitle`: `OC,opencode,Administrator,cmd,管理员`
+(comma-separated substrings, matched case-insensitively against window titles)
 
 Also available via Python:
 ```bash
@@ -272,17 +272,17 @@ QQ ←→ NapCat (OneBot v11)
 ```
 
 自动检测 NapCat、配置 HTTP:3000/WS:3001、创建 Python venv、
-写入 QQ_OVERRIDE、生成 NapCat 启动脚本。
+写入 QQ_OVERRIDE、生成 NapCat 启动脚本、设置窗口唤醒匹配模式。
 
-支持配置文件：
+选项：
 ```powershell
-.\quickstart.ps1 -configFile config.json
+.\quickstart.ps1 -qq 123456 -windowTitle "OC,opencode,cmd"   # 自定义窗口匹配模式
+.\quickstart.ps1 -configFile config.json                      # 配置文件模式
+.\quickstart.ps1 -restart                                     # 杀死残留 MCP + 等待恢复
 ```
 
-**重启助手**（杀死残留 MCP + 等待恢复）：
-```powershell
-.\quickstart.ps1 -restart
-```
+默认 `-windowTitle`：`OC,opencode,Administrator,cmd,管理员`
+（逗号分隔，不区分大小写子串匹配窗口标题）
 
 Python 版（功能相同）：
 ```bash
