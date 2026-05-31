@@ -23,5 +23,14 @@
     "keywords": [],
     "enabled": true,
     "ignore_if_focused": true
+  },
+  {
+    "target_type": "group",
+    "target_id": "688014255",
+    "keywords": [
+      "@me"
+    ],
+    "enabled": true,
+    "ignore_if_focused": true
   }
 ]
