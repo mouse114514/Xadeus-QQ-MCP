@@ -390,12 +390,18 @@ class WakeMonitor:
             else:
                 return
 
+        matched = self._matches_rule(target_type, target_id, msg)
+        if matched is None:
+            return
+
+        # ── 模型正在等回复时不唤醒 ──
+        if self._waiting_for_reply:
+            logger.info("Model is waiting for a reply, skipping wake")
+            return
+
         wake_key = self._wake_key(target_type, target_id, msg)
         if wake_key in self._woke_ids:
             logger.debug("Duplicate wake skipped (key=%s)", wake_key)
-            return
-        matched = self._matches_rule(target_type, target_id, msg)
-        if matched is None:
             return
         self._woke_ids.add(wake_key)
         # 防止无限增长：保留最近 100 条
