@@ -18,6 +18,21 @@ logger = logging.getLogger(__name__)
 # ── Thread lock for clipboard/window operations ──────────
 _CLIPBOARD_LOCK = threading.Lock()
 
+# ── Inter-process named mutex (prevent duplicate typing from MCP duplicates) ──
+MUTEX_NAME = "Local\\XadeusQQ_MCP_WakeTyping"
+_mutex_handle = None
+
+def _acquire_typing_mutex() -> bool:
+    global _mutex_handle
+    if _mutex_handle is None:
+        _mutex_handle = _kernel32.CreateMutexW(None, False, MUTEX_NAME)
+    WAIT_TIMEOUT = 0x00000102
+    result = _kernel32.WaitForSingleObject(_mutex_handle, 0)  # 0 = no wait
+    return result != WAIT_TIMEOUT  # True = acquired
+
+def _release_typing_mutex() -> None:
+    _kernel32.ReleaseMutex(_mutex_handle)
+
 # ── Win32 API ──────────────────────────────────────────────
 _user32 = ctypes.windll.user32
 _kernel32 = ctypes.windll.kernel32
@@ -129,17 +144,113 @@ _last_paste_text: str = ""
 _last_paste_time: float = 0.0
 
 
-def _type_via_clipboard(text: str, patterns: list[str] | None = None) -> bool:
-    """Focus → CTRL+L → set clipboard → CTRL+V."""
+# ── SendInput structures (Unicode fallback) ──────────────
+class KEYBDINPUT(ctypes.Structure):
+    _fields_ = [
+        ("wVk", ctypes.c_ushort),
+        ("wScan", ctypes.c_ushort),
+        ("dwFlags", ctypes.c_uint),
+        ("time", ctypes.c_uint),
+        ("dwExtraInfo", ctypes.c_void_p),
+    ]
+
+class _INPUT_UNION(ctypes.Union):
+    _fields_ = [
+        ("ki", KEYBDINPUT),
+    ]
+
+class INPUT(ctypes.Structure):
+    _fields_ = [
+        ("type", ctypes.c_uint),
+        ("u", _INPUT_UNION),
+    ]
+
+INPUT_KEYBOARD = 1
+KEYEVENTF_UNICODE = 0x0004
+VK_PACKET = 0xE7
+
+_SENDINPUT_BUFFER = (INPUT * 2)()
+_SENDINPUT_KI = KEYBDINPUT()
+_SENDINPUT_SIZE = ctypes.sizeof(INPUT)
+
+_GetLastError = ctypes.windll.kernel32.GetLastError
+
+
+def _send_unicode_sendinput(cp: int) -> bool:
+    _SENDINPUT_KI.wVk = VK_PACKET
+    _SENDINPUT_KI.wScan = cp
+    _SENDINPUT_KI.dwFlags = KEYEVENTF_UNICODE
+    _SENDINPUT_KI.time = 0
+    _SENDINPUT_KI.dwExtraInfo = None
+
+    _SENDINPUT_BUFFER[0].type = INPUT_KEYBOARD
+    _SENDINPUT_BUFFER[0].u.ki = _SENDINPUT_KI
+
+    _SENDINPUT_KI.dwFlags = KEYEVENTF_UNICODE | 2
+    _SENDINPUT_BUFFER[1].type = INPUT_KEYBOARD
+    _SENDINPUT_BUFFER[1].u.ki = _SENDINPUT_KI
+
+    result = _user32.SendInput(2, _SENDINPUT_BUFFER, _SENDINPUT_SIZE)
+    if result != 2:
+        logger.warning("SendInput failed for U+%04X (result=%d, gle=%d)",
+                       cp, result, _GetLastError())
+    return result == 2
+
+
+def _type_via_console(text: str, hwnd: int) -> bool:
+    """Type text via keybd_event. text is guaranteed ASCII-only."""
+    if not _activate_window(hwnd):
+        return False
+    time.sleep(0.3)
+
+    for ch in text:
+        cp = ord(ch)
+        if cp <= 127:
+            result = _user32.VkKeyScanW(ctypes.c_short(cp))
+            vk = result & 0xFF
+            shift = (result >> 8) & 0xFF
+            if vk == 0xFF and shift == 0xFF:
+                continue
+            if shift & 1:
+                _user32.keybd_event(0x10, 0, 0, 0)
+                time.sleep(0.03)
+            _user32.keybd_event(vk, 0, 0, 0)
+            time.sleep(0.03)
+            _user32.keybd_event(vk, 0, 2, 0)
+            time.sleep(0.03)
+            if shift & 1:
+                _user32.keybd_event(0x10, 0, 2, 0)
+            time.sleep(0.05)
+        else:
+            for _ in range(3):
+                if _send_unicode_sendinput(cp):
+                    break
+                time.sleep(0.05)
+            time.sleep(0.08)
+
+    time.sleep(0.2)
+    _send_key(VK_RETURN)
+    time.sleep(0.05)
+    _send_key(VK_RETURN, up=True)
+    time.sleep(0.1)
+    return True
+
+
+def _type_via_keyboard(text: str, patterns: list[str] | None = None) -> bool:
+    """Type text directly into console (WriteConsoleInputW)."""
     global _last_paste_text, _last_paste_time
 
     acquired = _CLIPBOARD_LOCK.acquire(blocking=False)
     if not acquired:
-        logger.warning("Clipboard operation already in progress, skipping")
+        logger.warning("Console type operation already in progress, skipping")
+        return False
+
+    if not _acquire_typing_mutex():
+        logger.info("Another MCP process is already typing, skipping")
+        _CLIPBOARD_LOCK.release()
         return False
 
     try:
-        # 文本去重（在锁内，原子操作）
         now = time.time()
         if text == _last_paste_text and (now - _last_paste_time) < 3.0:
             logger.warning("Duplicate paste suppressed (same text within 3s)")
@@ -150,30 +261,19 @@ def _type_via_clipboard(text: str, patterns: list[str] | None = None) -> bool:
             logger.warning("opencode window not found")
             return False
 
-        if not _activate_window(hwnd):
+        if not _type_via_console(text, hwnd):
+            logger.warning("Console input injection failed")
             return False
-
-        time.sleep(0.2)
-        _send_ctrl_combo(VK_L)  # 聚焦输入框
-        time.sleep(0.15)
-
-        if not _set_clipboard(text):
-            return False
-
-        time.sleep(0.1)
-        _send_ctrl_combo(VK_V)  # 粘贴
-        time.sleep(0.15)
-        # 按 Enter 发送消息
-        _send_key(VK_RETURN)
-        time.sleep(0.05)
-        _send_key(VK_RETURN, up=True)
-        time.sleep(0.1)
 
         _last_paste_text = text
         _last_paste_time = time.time()
         return True
     finally:
+        _release_typing_mutex()
         _CLIPBOARD_LOCK.release()
+
+
+_type_via_clipboard = _type_via_keyboard
 
 
 # ── 规则系统 ──────────────────────────────────────────────
@@ -242,6 +342,12 @@ class WakeMonitor:
         self._pending = False
         self._auto_unlock_task: asyncio.Task | None = None
         self._woke_ids: set[str] = set()  # 已触发的 message_id，防重复
+        # 锁管理：回复跟踪
+        self._reply_sent_time: float = 0.0  # 模型调用 send_message 的时间
+        self._reply_target: tuple[str, str] | None = None  # (target_type, target_id)
+        self._wake_lock_time: float = 0.0  # 上锁时间
+        self._lock_timeout: float = 300.0  # 5 分钟自动解锁
+        self._waiting_for_reply: bool = False  # send_message(wait_reply=True) 正在等待回复
         self.config = WakeConfig.load()
         # 注册消息回调（消息入库时直接触发，无需轮询）
         ctx.set_message_callback(self._on_incoming_message)
@@ -258,8 +364,32 @@ class WakeMonitor:
         """Called by ContextManager for every incoming non-self message."""
         if not self._running:
             return
+        now = time.time()
+
+        # ── 超时解锁（优先于其他检查） ──
+        if self._pending and now - self._wake_lock_time > self._lock_timeout:
+            logger.warning("Lock expired (%ds), force unlocking", self._lock_timeout)
+            self._pending = False
+            self._reply_sent_time = 0.0
+            self._reply_target = None
+
+        # ── 锁检查 ──
         if self._pending:
-            return
+            same_target = self._reply_target == (target_type, target_id)
+            if self._reply_sent_time > 0 and same_target and now - self._reply_sent_time > 1.0:
+                # 模型已回复，用户发来了下一轮消息 → 解锁
+                logger.info("User replied after model reply -> unlocking")
+                self._pending = False
+                self._reply_sent_time = 0.0
+                self._reply_target = None
+                if self._waiting_for_reply:
+                    # send_message(wait_reply=True) 正在等，不要重复唤醒
+                    return
+                # wait_reply=False 的情况：需要唤醒模型处理用户的新消息
+                # fall through to wake logic below
+            else:
+                return
+
         wake_key = self._wake_key(target_type, target_id, msg)
         if wake_key in self._woke_ids:
             logger.debug("Duplicate wake skipped (key=%s)", wake_key)
@@ -272,6 +402,9 @@ class WakeMonitor:
         if len(self._woke_ids) > 100:
             self._woke_ids = set(list(self._woke_ids)[-100:])
         self._pending = True
+        self._wake_lock_time = now
+        self._reply_sent_time = 0.0  # 模型尚未回复
+        self._reply_target = (target_type, target_id)
         asyncio.create_task(self._trigger(matched, target_type, target_id, msg))
 
     def add_rule(self, target_type: str, target_id: str | None = None,
@@ -396,7 +529,9 @@ class WakeMonitor:
         return None
 
     def _format_wake_message(self, rule: WakeRule, target_type: str, target_id: str, msg: Message) -> str:
-        return f"[MCP] {target_id} {msg.content}"
+        sender_id = msg.sender_id
+        sender_name = "".join(c if 32 <= ord(c) < 127 else "?" for c in (msg.sender_name or ""))
+        return f"[MCP wake from {target_type} {target_id} sender={sender_id}({sender_name})] call get_recent_context to see all messages then reply"
 
     @property
     def is_pending(self) -> bool:
@@ -411,12 +546,14 @@ class WakeMonitor:
         self._pending = False
 
     async def _auto_unlock_loop(self) -> None:
-        """每 60 秒自动解锁 pending，防止 agent 崩溃后卡死。"""
+        """每 300 秒自动解锁 pending，防止 agent 崩溃后卡死。"""
         while self._running:
             await asyncio.sleep(60)
-            if self._pending:
-                logger.warning("Auto-unlocking pending (stuck for >60s)")
+            if self._pending and time.time() - self._wake_lock_time > self._lock_timeout:
+                logger.warning("Auto-unlocking pending (stuck for >%ds)", self._lock_timeout)
                 self._pending = False
+                self._reply_sent_time = 0.0
+                self._reply_target = None
 
     def get_config(self) -> dict:
         return {
@@ -456,11 +593,20 @@ class WakeMonitor:
         if self._on_wake:
             self._on_wake(target_type, target_id, msg)
 
-        loop = asyncio.get_event_loop()
         try:
-            ok = await loop.run_in_executor(
-                None, _type_via_clipboard, text, self.config.window_title_patterns,
-            )
+            ok = _type_via_clipboard(text, self.config.window_title_patterns)
             logger.info("Wake activation result: %s", ok)
         except Exception as e:
             logger.error("Wake activation error: %s", e)
+            ok = False
+        # 锁继续保留，直到模型回复后用户回话或超时自动解锁
+
+    def mark_reply_sent(self, target_type: str, target_id: str) -> None:
+        """模型已通过 send_message 完成回复，记录时间。"""
+        self._reply_sent_time = time.time()
+        self._reply_target = (target_type, target_id)
+        logger.info("Reply sent marked for %s %s, lock stays until user replies back", target_type, target_id)
+
+    def set_waiting_for_reply(self, waiting: bool) -> None:
+        """send_message(wait_reply=True) 进入等待时设为 True，退出时设为 False。"""
+        self._waiting_for_reply = waiting

@@ -53,10 +53,11 @@ def create_server(config: Config) -> FastMCP:
     async def _init_background():
         """Connect to NapCat and start services in background (non-blocking)."""
         await _wait_ready(bot)
-        await ctx.backfill_history(bot)
+        # Start WebSocket loop FIRST so real-time events aren't missed during backfill
         ctx.start()
         wake_monitor.start()
         timer_scheduler.start()
+        await ctx.backfill_history(bot)
         logger.info("Context manager started (WS: %s)", config.ws_url)
 
     @asynccontextmanager

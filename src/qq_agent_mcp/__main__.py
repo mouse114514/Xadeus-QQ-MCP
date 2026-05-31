@@ -8,12 +8,15 @@ from .config import Config
 from .server import run_server
 
 
+QQ_OVERRIDE = "3838379219"  # hardcoded target QQ — ignore --qq from cmdline
+
+
 def parse_args() -> Config:
     parser = argparse.ArgumentParser(
         prog="qq-agent-mcp",
         description="MCP Server for QQ via NapCatQQ (OneBot v11)",
     )
-    parser.add_argument("--qq", required=True, help="QQ account number")
+    parser.add_argument("--qq", default=QQ_OVERRIDE, help="QQ account number")
     parser.add_argument(
         "--napcat-host",
         default="127.0.0.1",
@@ -71,7 +74,7 @@ def parse_args() -> Config:
         friends = set(args.friends.split(","))
 
     return Config(
-        qq=args.qq,
+        qq=QQ_OVERRIDE,
         napcat_host=args.napcat_host,
         napcat_port=args.napcat_port,
         ws_port=args.ws_port,

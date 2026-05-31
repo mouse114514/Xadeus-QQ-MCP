@@ -408,6 +408,8 @@ class ContextManager:
 
     async def _ws_loop(self) -> None:
         """Reconnecting WebSocket listener loop."""
+        import os
+        _dbg = os.path.join(os.path.dirname(__file__), "ws_debug.log")
         retry_delay = 1.0  # seconds, grows on failure
         max_retry = 30.0
 
@@ -500,7 +502,7 @@ class ContextManager:
         if not buf.add(msg):  # duplicate, skip callback and event
             return
         self._fire_new_msg_event(key)
-        if self._on_message and not msg.is_self:
+        if self._on_message:
             self._on_message("group", group_id, msg)
 
         logger.debug(
@@ -544,7 +546,7 @@ class ContextManager:
         if not buf.add(msg):  # duplicate, skip callback and event
             return
         self._fire_new_msg_event(key)
-        if self._on_message and not msg.is_self:
+        if self._on_message:
             self._on_message("private", sender_id, msg)
 
         logger.debug("Private %s | %s: %s", sender_id, sender_name, content[:50])

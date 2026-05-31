@@ -164,7 +164,7 @@ class TimerScheduler:
         if self._wake_monitor is None:
             logger.warning("Timer #%s: no wake_monitor, skipping", t.id)
             return
-        text = f"[MCP] timer {t.id} {t.message}"
+        text = f"[MCP] timer {t.id}"
         logger.info("Timer #%s firing: %s", t.id, text)
         await self._wake_monitor.wake_with_message(text)
 

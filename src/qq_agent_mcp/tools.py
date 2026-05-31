@@ -657,6 +657,10 @@ def register_tools(
                 }
             return {"success": False, "error": str(e)}
 
+        # Mark reply sent to wake monitor (lock stays until user replies back)
+        if wake_monitor:
+            wake_monitor.mark_reply_sent(target_type, target)
+
         # Snapshot: all messages since this send_message started (incremental)
         recent_msgs = ctx.get_messages_since(target, target_type, t0)
         recent_lines: list[str] = []
@@ -679,20 +683,23 @@ def register_tools(
 
         # Auto-wait for reply unless explicitly disabled
         if wait_reply:
-            wait_since = time.time()
-            _relevant = _make_relevant_fn(target_type, target, wake_monitor)
-            reply_msgs, timed_out = await ctx.wait_for_new_message(
-                target, target_type, wait_since, timeout=None,
-                relevant_fn=_relevant,
-            )
-            result["reply"] = {
-                "messages": [m.to_dict() for m in reply_msgs if not m.is_self],
-                "timed_out": timed_out,
-                "waited_seconds": round(time.time() - wait_since, 1),
-            }
-            # 收到回复后自动解锁 pending
-            if wake_monitor and not timed_out:
-                wake_monitor.set_pending(False)
+            if wake_monitor:
+                wake_monitor.set_waiting_for_reply(True)
+            try:
+                wait_since = time.time()
+                _relevant = _make_relevant_fn(target_type, target, wake_monitor)
+                reply_msgs, timed_out = await ctx.wait_for_new_message(
+                    target, target_type, wait_since, timeout=None,
+                    relevant_fn=_relevant,
+                )
+                result["reply"] = {
+                    "messages": [m.to_dict() for m in reply_msgs if not m.is_self],
+                    "timed_out": timed_out,
+                    "waited_seconds": round(time.time() - wait_since, 1),
+                }
+            finally:
+                if wake_monitor:
+                    wake_monitor.set_waiting_for_reply(False)
 
         return result
 
@@ -728,13 +735,15 @@ def register_tools(
         timeout = max(1.0, min(timeout, 300.0))
         since = time.time()
         _relevant = _make_relevant_fn(target_type, target, wake_monitor)
-        messages, timed_out = await ctx.wait_for_new_message(
-            target, target_type, since, timeout, relevant_fn=_relevant,
-        )
-
-        # 收到回复后自动解锁 pending
-        if wake_monitor and not timed_out and messages:
-            wake_monitor.set_pending(False)
+        if wake_monitor:
+            wake_monitor.set_waiting_for_reply(True)
+        try:
+            messages, timed_out = await ctx.wait_for_new_message(
+                target, target_type, since, timeout, relevant_fn=_relevant,
+            )
+        finally:
+            if wake_monitor:
+                wake_monitor.set_waiting_for_reply(False)
 
         result = {
             "target": target,
@@ -1158,12 +1167,47 @@ def register_tools(
         @mcp.tool()
         async def test_wake_activation() -> dict:
             """Manually trigger the wake activation sequence (for testing)."""
-            from .wake import _type_via_clipboard, MESSAGE_TEMPLATE
+            from .wake import _type_via_keyboard
             try:
-                ok = _type_via_clipboard(MESSAGE_TEMPLATE)
-                return {"success": ok, "message": "Wake sequence executed" if ok else "Wake sequence FAILED"}
+                text = "[MCP] test wake"
+                patterns = wake_monitor.config.window_title_patterns
+                ok = _type_via_keyboard(text, patterns)
+                return {"success": ok, "message": "Wake executed" if ok else "Wake FAILED"}
             except Exception as e:
                 return {"success": False, "error": str(e)}
+
+        @mcp.tool()
+        async def debug_wake_pipeline(target_type: str = "private", target_id: str = "3838379219") -> dict:
+            """Debug the wake pipeline by simulating what happens when a message arrives."""
+            try:
+                from .context import Message
+                msg = Message(
+                    sender_id=target_id,
+                    sender_name="DEBUG",
+                    content="测试消息",
+                    timestamp="2026-05-31T12:00:00+08:00",
+                    message_id="debug_test_1",
+                    is_self=False,
+                )
+                # Check callback
+                cb = ctx._on_message
+                result = {
+                    "callback_set": cb is not None,
+                    "callback_name": cb.__name__ if cb else None,
+                    "matches_rules": wake_monitor._matches_rule(target_type, target_id, msg) is not None,
+                    "pending": wake_monitor._pending,
+                    "running": wake_monitor._running,
+                }
+                if cb:
+                    try:
+                        cb(target_type, target_id, msg)
+                        result["callback_invoked"] = True
+                    except Exception as e:
+                        result["callback_invoked"] = False
+                        result["callback_error"] = str(e)
+                return result
+            except Exception as e:
+                return {"error": str(e)}
 
         @mcp.tool()
         async def diagnose_wake() -> dict:
@@ -1176,13 +1220,6 @@ def register_tools(
                 "callback_name": ctx._on_message.__name__ if ctx._on_message else None,
                 "total_buffered": ctx.buffer_stats["total_messages_buffered"],
             }
-            """Manually trigger the wake activation sequence (for testing)."""
-            from .wake import _type_via_clipboard, MESSAGE_TEMPLATE
-            try:
-                ok = _type_via_clipboard(MESSAGE_TEMPLATE)
-                return {"success": ok, "message": "Wake sequence executed" if ok else "Wake sequence FAILED"}
-            except Exception as e:
-                return {"success": False, "error": str(e)}
 
         @mcp.tool()
         async def add_wake_rule(

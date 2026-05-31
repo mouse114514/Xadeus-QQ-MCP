@@ -1,0 +1,10 @@
+{
+  "window_title_patterns": [
+    "OC",
+    "opencode",
+    "Administrator",
+    "cmd",
+    "管理员"
+  ],
+  "focus_shortcut": "ctrl+l"
+}
