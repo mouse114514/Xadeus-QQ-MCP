@@ -340,6 +340,9 @@ class WakeMonitor:
         self._running = False
         self._on_wake = on_wake
         self._pending = False  # 手动锁（set_wake_pending）
+        self._pending_lock_time: float = 0.0
+        self._pending_timeout: float = 300.0  # 手动锁 5 分钟超时
+        self._auto_unlock_task: asyncio.Task | None = None
         self._woke_ids: set[str] = set()  # 已触发的 message_id，防重复
         self._waiting_for_reply: bool = False  # send_message(wait_reply=True) 正在等待回复
         self.config = WakeConfig.load()
@@ -358,6 +361,11 @@ class WakeMonitor:
         """Called by ContextManager for every incoming non-self message."""
         if not self._running:
             return
+
+        # ── 手动锁超时解锁 ──
+        if self._pending and time.time() - self._pending_lock_time > self._pending_timeout:
+            logger.warning("Manual lock expired (%ds), force unlocking", self._pending_timeout)
+            self._pending = False
 
         matched = self._matches_rule(target_type, target_id, msg)
         if matched is None:
@@ -475,10 +483,14 @@ class WakeMonitor:
 
     def start(self) -> None:
         self._running = True
+        self._auto_unlock_task = asyncio.create_task(self._auto_unlock_loop())
         logger.info("Wake monitor started (%d rules)", len(self.rules))
 
     async def stop(self) -> None:
         self._running = False
+        if self._auto_unlock_task is not None:
+            self._auto_unlock_task.cancel()
+            self._auto_unlock_task = None
         logger.info("Wake monitor stopped")
 
     def _matches_rule(self, target_type: str, target_id: str, msg: Message) -> WakeRule | None:
@@ -515,6 +527,14 @@ class WakeMonitor:
         """清除手动锁（set_wake_pending）。"""
         self._pending = False
 
+    async def _auto_unlock_loop(self) -> None:
+        """每 60s 检查一次，手动锁超过 5 分钟自动解锁。"""
+        while self._running:
+            await asyncio.sleep(60)
+            if self._pending and time.time() - self._pending_lock_time > self._pending_timeout:
+                logger.warning("Auto-unlocking manual lock (stuck for >%ds)", self._pending_timeout)
+                self._pending = False
+
     def get_config(self) -> dict:
         return {
             "window_title_patterns": self.config.window_title_patterns,
@@ -532,6 +552,8 @@ class WakeMonitor:
     def set_pending(self, pending: bool) -> None:
         """agent 手动管理 pending 状态。"""
         self._pending = pending
+        if pending:
+            self._pending_lock_time = time.time()
         logger.info("Wake pending set to %s", pending)
 
     async def wake_with_message(self, text: str) -> bool:
