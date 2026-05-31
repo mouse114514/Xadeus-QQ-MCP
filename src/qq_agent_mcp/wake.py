@@ -373,22 +373,9 @@ class WakeMonitor:
             self._reply_sent_time = 0.0
             self._reply_target = None
 
-        # ── 锁检查 ──
+        # ── 锁检查：锁定中则跳过（仅超时解锁） ──
         if self._pending:
-            same_target = self._reply_target == (target_type, target_id)
-            if self._reply_sent_time > 0 and same_target and now - self._reply_sent_time > 1.0:
-                # 模型已回复，用户发来了下一轮消息 → 解锁
-                logger.info("User replied after model reply -> unlocking")
-                self._pending = False
-                self._reply_sent_time = 0.0
-                self._reply_target = None
-                if self._waiting_for_reply:
-                    # send_message(wait_reply=True) 正在等，不要重复唤醒
-                    return
-                # wait_reply=False 的情况：需要唤醒模型处理用户的新消息
-                # fall through to wake logic below
-            else:
-                return
+            return
 
         matched = self._matches_rule(target_type, target_id, msg)
         if matched is None:
@@ -605,7 +592,7 @@ class WakeMonitor:
         except Exception as e:
             logger.error("Wake activation error: %s", e)
             ok = False
-        # 锁继续保留，直到模型回复后用户回话或超时自动解锁
+        # 锁保留 300 秒，超时后自动解锁
 
     def mark_reply_sent(self, target_type: str, target_id: str) -> None:
         """模型已通过 send_message 完成回复，记录时间。"""
