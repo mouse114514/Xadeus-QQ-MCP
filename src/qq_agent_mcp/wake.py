@@ -339,14 +339,8 @@ class WakeMonitor:
         self.rules: list[WakeRule] = []
         self._running = False
         self._on_wake = on_wake
-        self._pending = False
-        self._auto_unlock_task: asyncio.Task | None = None
+        self._pending = False  # 手动锁（set_wake_pending）
         self._woke_ids: set[str] = set()  # 已触发的 message_id，防重复
-        # 锁管理：回复跟踪
-        self._reply_sent_time: float = 0.0  # 模型调用 send_message 的时间
-        self._reply_target: tuple[str, str] | None = None  # (target_type, target_id)
-        self._wake_lock_time: float = 0.0  # 上锁时间
-        self._lock_timeout: float = 300.0  # 5 分钟自动解锁
         self._waiting_for_reply: bool = False  # send_message(wait_reply=True) 正在等待回复
         self.config = WakeConfig.load()
         # 注册消息回调（消息入库时直接触发，无需轮询）
@@ -364,30 +358,18 @@ class WakeMonitor:
         """Called by ContextManager for every incoming non-self message."""
         if not self._running:
             return
-        now = time.time()
-
-        # ── 超时解锁（优先于其他检查） ──
-        if self._pending and now - self._wake_lock_time > self._lock_timeout:
-            logger.warning("Lock expired (%ds), force unlocking", self._lock_timeout)
-            self._pending = False
-            self._reply_sent_time = 0.0
-            self._reply_target = None
-
-        # ── 锁检查 ──
-        if self._pending:
-            # @提及 跳过锁直接唤醒
-            if msg.is_at_me:
-                logger.info("At-mention bypasses pending lock")
-            else:
-                return
 
         matched = self._matches_rule(target_type, target_id, msg)
         if matched is None:
             return
 
-        # ── 模型正在等回复时不唤醒 ──
-        if self._waiting_for_reply and not msg.is_at_me:
-            logger.info("Model is waiting for a reply, skipping wake")
+        # ── 手动锁（set_wake_pending） ──
+        if self._pending:
+            return
+
+        # ── 模型正在等回复时锁住，任何消息都不唤醒 ──
+        if self._waiting_for_reply:
+            logger.info("Waiting for reply, locked")
             return
 
         wake_key = self._wake_key(target_type, target_id, msg)
@@ -395,13 +377,8 @@ class WakeMonitor:
             logger.debug("Duplicate wake skipped (key=%s)", wake_key)
             return
         self._woke_ids.add(wake_key)
-        # 防止无限增长：保留最近 100 条
         if len(self._woke_ids) > 100:
             self._woke_ids = set(list(self._woke_ids)[-100:])
-        self._pending = True
-        self._wake_lock_time = now
-        self._reply_sent_time = 0.0  # 模型尚未回复
-        self._reply_target = (target_type, target_id)
         asyncio.create_task(self._trigger(matched, target_type, target_id, msg))
 
     def add_rule(self, target_type: str, target_id: str | None = None,
@@ -498,14 +475,10 @@ class WakeMonitor:
 
     def start(self) -> None:
         self._running = True
-        self._auto_unlock_task = asyncio.create_task(self._auto_unlock_loop())
         logger.info("Wake monitor started (%d rules)", len(self.rules))
 
     async def stop(self) -> None:
         self._running = False
-        if self._auto_unlock_task is not None:
-            self._auto_unlock_task.cancel()
-            self._auto_unlock_task = None
         logger.info("Wake monitor stopped")
 
     def _matches_rule(self, target_type: str, target_id: str, msg: Message) -> WakeRule | None:
@@ -539,18 +512,8 @@ class WakeMonitor:
         return self._matches_rule(target_type, target_id, msg) is not None
 
     def clear_pending(self) -> None:
-        """Agent 调用 QQ 发送工具时调用此方法，解除 pending 允许下次唤醒。"""
+        """清除手动锁（set_wake_pending）。"""
         self._pending = False
-
-    async def _auto_unlock_loop(self) -> None:
-        """每 300 秒自动解锁 pending，防止 agent 崩溃后卡死。"""
-        while self._running:
-            await asyncio.sleep(60)
-            if self._pending and time.time() - self._wake_lock_time > self._lock_timeout:
-                logger.warning("Auto-unlocking pending (stuck for >%ds)", self._lock_timeout)
-                self._pending = False
-                self._reply_sent_time = 0.0
-                self._reply_target = None
 
     def get_config(self) -> dict:
         return {
@@ -599,10 +562,8 @@ class WakeMonitor:
         # 锁保留 300 秒，超时后自动解锁
 
     def mark_reply_sent(self, target_type: str, target_id: str) -> None:
-        """模型已通过 send_message 完成回复，记录时间。"""
-        self._reply_sent_time = time.time()
-        self._reply_target = (target_type, target_id)
-        logger.info("Reply sent marked for %s %s, lock stays until user replies back", target_type, target_id)
+        """模型已通过 send_message 完成回复。锁逻辑现在只依赖 _waiting_for_reply。"""
+        pass
 
     def set_waiting_for_reply(self, waiting: bool) -> None:
         """send_message(wait_reply=True) 进入等待时设为 True，退出时设为 False。"""
