@@ -236,8 +236,7 @@ def build_mcp_entry(qq: str, http_port: int, ws_port: int, groups: list[str] | N
     entry_type = "local" if (agent_key or "").startswith("opencode") else "stdio"
     return {
         "type": entry_type,
-        "command": cmd[0],
-        "args": cmd[1:],
+        "command": cmd,
         "enabled": True,
         "timeout": 120000,
     }
