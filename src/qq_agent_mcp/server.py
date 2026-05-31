@@ -50,26 +50,34 @@ def create_server(config: Config) -> FastMCP:
     # Timer scheduler for timed tasks
     timer_scheduler = TimerScheduler(wake_monitor)
 
-    @asynccontextmanager
-    async def lifespan(app: FastMCP):
-        # Startup: check NapCat is reachable, then backfill + start WS
+    async def _init_background():
+        """Connect to NapCat and start services in background (non-blocking)."""
         await _wait_ready(bot)
         await ctx.backfill_history(bot)
         ctx.start()
         wake_monitor.start()
         timer_scheduler.start()
         logger.info("Context manager started (WS: %s)", config.ws_url)
+
+    @asynccontextmanager
+    async def lifespan(app: FastMCP):
+        # Don't block startup — opencode needs tools/list immediately
+        init_task = asyncio.create_task(_init_background())
         try:
             yield {"browser_holder": browser_holder, "wake_monitor": wake_monitor, "timer_scheduler": timer_scheduler}
         finally:
-            # Shutdown: stop timer scheduler, WebSocket listener, wake monitor, browser, and HTTP client
+            init_task.cancel()
+            try:
+                await init_task
+            except asyncio.CancelledError:
+                pass
             await timer_scheduler.stop()
             await wake_monitor.stop()
             if browser_holder["browser"]:
                 await browser_holder["browser"].close()
                 logger.info("Playwright browser closed")
             if browser_holder["pw"]:
-                await browser_holder["pw"].stop()
+                await browser_holder["pw"].close()
             await ctx.stop()
             await bot.close()
             logger.info("Context manager and bot client stopped")
