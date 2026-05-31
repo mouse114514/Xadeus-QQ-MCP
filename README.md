@@ -66,6 +66,16 @@ uv run python -m qq_agent_mcp --qq YOUR_QQ
 
 ### Configure Your AI Agent
 
+> **Important**: The `--qq` argument passed by your AI agent config is **ignored** at runtime.
+> Instead, set `QQ_OVERRIDE` environment variable before starting your agent:
+> ```powershell
+> $env:QQ_OVERRIDE = "YOUR_QQ"
+> ```
+> Or edit the fallback value in `src/qq_agent_mcp/__main__.py:QQ_OVERRIDE`.
+>
+> This works around AI agents that cache the MCP command at startup
+> and ignore subsequent config file changes.
+
 **opencode** — edit `~/.config/opencode/opencode.json`:
 
 ```json
@@ -167,6 +177,26 @@ Saved to `src/qq_agent_mcp/wake_config.json`.
 | `remove_timer` | Remove timer |
 | `list_timers` | List all timers |
 
+## Known Issues & Workarounds
+
+| Issue | Cause | Workaround |
+|-------|-------|------------|
+| **MCP won't restart** after crash/kill | opencode has restart backoff; after ~3 kills it stops retrying | Restart your AI agent, or use `restart.ps1` |
+| **Two MCP processes** always appear | FastMCP stdio transport spawns parent+child chain | Named mutex prevents duplicate typing (built-in fix) |
+| **Config changes ignored** after editing `opencode.json` | opencode caches MCP command at startup | Restart opencode, or use `QQ_OVERRIDE` env var |
+| **Wake message doubled** | Both processes try to type simultaneously | Fixed via Windows named mutex (`Local\XadeusQQ_MCP_WakeTyping`) |
+| **Messages from same QQ ignored** | `is_self` filter in context.py and wake.py | Removed in current build |
+| **Wake won't fire** even with matching rule | Lock (`_pending`) held from previous wake | Auto-unlock after 5 min, or call `set_wake_pending(false)` |
+
+### Restart Helper
+
+```powershell
+.\restart.ps1
+```
+
+Kills stale MCP processes and waits for auto-restart. If the agent doesn't
+recover, it prompts you to restart manually.
+
 ## Tech Stack
 
 - Python 3.12+ (httpx, aiohttp, FastMCP)
@@ -245,6 +275,16 @@ uv run python -m qq_agent_mcp --qq 你的QQ号
 ```
 
 ### 配置 AI Agent
+
+> **重要**：AI Agent 配置中的 `--qq` 参数在运行时**会被忽略**。
+> 正确方式：启动 Agent 前设置环境变量：
+> ```powershell
+> $env:QQ_OVERRIDE = "你的QQ号"
+> ```
+> 或直接修改 `src/qq_agent_mcp/__main__.py:QQ_OVERRIDE` 的默认值。
+>
+> 这样做是为了绕过 AI Agent 缓存 MCP 命令的问题——
+> Agent 只在启动时读取一次配置，改配置文件不生效。
 
 **opencode** — 编辑 `~/.config/opencode/opencode.json`:
 
@@ -346,6 +386,25 @@ uv run python -m qq_agent_mcp --qq 你的QQ号
 | `add_timer` | 添加定时任务 |
 | `remove_timer` | 删除定时任务 |
 | `list_timers` | 查看所有定时任务 |
+
+## 已知问题
+
+| 问题 | 原因 | 解决方法 |
+|------|------|----------|
+| **MCP 被杀后无法自启** | opencode 有重启退避策略 | 重启 AI Agent，或用 `restart.ps1` |
+| **总是有两个 MCP 进程** | FastMCP stdio 产生父子进程链 | 内置命名互斥锁解决重复打字 |
+| **改 opencode.json 不生效** | opencode 启动时缓存命令 | 重启 opencode，或用 `QQ_OVERRIDE` 环境变量 |
+| **唤醒消息出现双倍字符** | 两个进程同时打字 | 已修复（Windows 命名互斥锁） |
+| **同 QQ 号发消息不唤醒** | `is_self` 过滤器阻挡 | 已修复（移除 context.py/wake.py 过滤） |
+| **匹配规则但不唤醒** | 唤醒锁 (`_pending`) 未释放 | 5 分钟自动解锁，或调用 `set_wake_pending(false)` |
+
+### 重启助手
+
+```powershell
+.\restart.ps1
+```
+
+杀死残留 MCP 进程并等待自动重启。如果 Agent 不自动恢复，会提示你手动重启。
 
 ## 技术栈
 

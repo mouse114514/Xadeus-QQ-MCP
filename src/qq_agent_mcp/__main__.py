@@ -2,13 +2,14 @@
 
 import argparse
 import logging
+import os
 import sys
 
 from .config import Config
 from .server import run_server
 
 
-QQ_OVERRIDE = "3838379219"  # hardcoded target QQ — ignore --qq from cmdline
+QQ_OVERRIDE = os.environ.get("QQ_OVERRIDE") or "3838379219"  # env var or hardcoded fallback
 
 
 def parse_args() -> Config:
