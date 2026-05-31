@@ -1,39 +1,207 @@
 # Xadeus-QQ-MCP
 
+> Built by a 15-year-old developer, based on [Amadeus-QQ-MCP](https://github.com/Sakura325/Amadeus-QQ-MCP).
+
+QQ MCP (Model Context Protocol) Server — connects to QQ via NapCatQQ (OneBot v11), giving AI agents direct control over QQ (send/receive messages, group management, auto-wake on incoming messages, and more).
+
+[![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)]()
+[![License: MIT](https://img.shields.io/badge/License-MIT-green)]()
+
+---
+
+## Features
+
+| Feature | Description |
+|---------|-------------|
+| **Auto-Wake** | Incoming QQ messages matching rules trigger the AI agent window automatically. **Supports any client** — opencode, Cursor, Claude Desktop, Windsurf — configure via `set_wake_config` |
+| **Dedup Lock** | Prevents duplicate wake during processing. Unlock manually when done |
+| **Persistent Rules** | Wake rules saved to `wake_rules.json`, auto-loaded on restart |
+| **`wait_for_reply` Built-in** | `send_message` waits for reply by default |
+| **Group Moderation** | Mute, unmute, kick, set card, send notices |
+| **File Sending** | Send any file from URL to QQ groups/private chats |
+| **Message Recall** | Recall bot-sent messages |
+| **Timer Scheduler** | Cron or interval-based timed wake |
+| **One-Click Setup** | Auto-detect NapCat, configure ports, update agent configs |
+
+## Architecture
+
+```
+QQ ←→ NapCat (OneBot v11)
+          ↓  WebSocket :3001 / HTTP :3000
+    Xadeus-QQ-MCP (Python MCP Server)
+          ↓  MCP Protocol
+    AI Agent (opencode / Cursor / Claude / ...)
+```
+
+## Quick Start
+
+### Prerequisites
+
+1. Install [NapCat.Shell](https://github.com/NapNeko/NapCatQQ) and QQ
+2. Configure NapCat OneBot v11 (WebSocket :3001, HTTP :3000)
+
+### One-Click Setup
+
+```bash
+python setup.py
+# Interactive — detects NapCat, configures ports, updates agent MCP config
+
+# Or non-interactive:
+python setup.py --qq YOUR_QQ --fast
+```
+
+### Manual Setup
+
+```bash
+git clone https://github.com/mouse114514/Xadeus-QQ-MCP
+cd Xadeus-QQ-MCP
+
+# Virtual env
+uv venv
+uv sync
+
+# Start MCP Server
+uv run python -m qq_agent_mcp --qq YOUR_QQ
+```
+
+### Configure Your AI Agent
+
+**opencode** — edit `~/.config/opencode/opencode.json`:
+
+```json
+{
+  "mcp": {
+    "qq-agent": {
+      "type": "local",
+      "command": [
+        "C:\\path\\to\\.venv\\Scripts\\python.exe",
+        "-m", "qq_agent_mcp",
+        "--qq", "YOUR_QQ"
+      ],
+      "enabled": true,
+      "timeout": 120000
+    }
+  }
+}
+```
+
+**Cursor / Claude Desktop / Windsurf** — edit the respective MCP config file:
+
+```json
+{
+  "mcpServers": {
+    "qq-agent": {
+      "command": "C:\\path\\to\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "qq_agent_mcp", "--qq", "YOUR_QQ"],
+      "enabled": true
+    }
+  }
+}
+```
+
+*Or just run `python setup.py` — it detects all installed agents automatically.*
+
+### Wake Target Configuration
+
+Use `set_wake_config` to bind to any AI agent window:
+
+```json
+{
+  "window_title_patterns": ["opencode", "cursor", "claude"],
+  "focus_shortcut": "ctrl+l"
+}
+```
+
+Saved to `src/qq_agent_mcp/wake_config.json`.
+
+## MCP Tools
+
+### Messaging
+| Tool | Description |
+|------|-------------|
+| `send_message` | Send text with segmentation and optional reply wait |
+| `send_image` | Send image (base64) |
+| `send_voice` | Send voice (base64) |
+| `wait_for_reply` | Wait for new messages |
+
+### Context & History
+| Tool | Description |
+|------|-------------|
+| `get_recent_context` | Recent messages for a group/friend |
+| `batch_get_recent_context` | Batch query multiple targets |
+| `screenshot_chat` | Render chat screenshot (iPhone dark mode style) |
+| `compress_context` | Archive old messages to summary |
+
+### Wake System
+| Tool | Description |
+|------|-------------|
+| `add_wake_rule` | Add auto-wake rule (group/private + keywords) |
+| `remove_wake_rule` | Remove wake rule by index |
+| `list_wake_rules` | List all wake rules |
+| `set_wake_pending` | Lock/unlock wake to prevent duplicates |
+| `set_wake_enabled` | Enable/disable all or specific rules |
+| `set_wake_config` | Configure target window and focus shortcut |
+| `get_wake_config` | View current wake config |
+| `diagnose_wake` | Debug wake monitor state |
+
+### Group Management
+| Tool | Description |
+|------|-------------|
+| `get_group_list` | List joined groups |
+| `get_group_member_list` | List group members |
+| `get_group_member_info` | Get member details |
+| `mute_member` | Mute a member |
+| `unmute_member` | Unmute a member |
+| `kick_member` | Kick a member |
+| `set_member_card` | Set group nickname |
+| `send_group_notice` | Send group notice |
+
+### System
+| Tool | Description |
+|------|-------------|
+| `check_status` | Check QQ and NapCat connection |
+| `get_friend_list` | List friends |
+| `recall_message` | Recall bot message |
+| `send_file` | Send file from URL |
+| `add_timer` | Add scheduled wake (cron/interval) |
+| `remove_timer` | Remove timer |
+| `list_timers` | List all timers |
+
+## Tech Stack
+
+- Python 3.12+ (httpx, aiohttp, FastMCP)
+- NapCat.Shell (QQ + OneBot v11)
+- Win32 API (ctypes) — window activation, keyboard simulation
+
+## License
+
+Based on Amadeus-QQ-MCP (MIT License).
+
+---
+
+> **中文版**
+
+# Xadeus-QQ-MCP
+
 > **由一位 13 岁初中生基于 [Amadeus-QQ-MCP](https://github.com/Sakura325/Amadeus-QQ-MCP) 深度优化改造。**
 
 QQ MCP (Model Context Protocol) Server — 通过 NapCatQQ (OneBot v11) 协议连接 QQ，为 AI Agent 提供直接操控 QQ 的能力（收发消息、管理群聊、自动唤醒等）。
 
 ---
 
-## 与 Amadeus-QQ-MCP 的差异
-
-### 新增功能
+## 功能亮点
 
 | 功能 | 说明 |
 |------|------|
-| **Auto-Wake 自动唤醒** | QQ 消息匹配规则时自动激活 AI Agent 窗口并粘贴消息到输入框。**支持任意客户端，通过 `set_wake_config` 配置窗口标题即可绑定到 opencode、Cursor、Claude Desktop 等** |
-| **Pending 防重复锁** | 唤醒后自动上锁，防止处理过程中重复唤醒。Agent 干完活后手动解锁，完全掌控唤醒节奏 |
-| **规则持久化** | 唤醒规则自动保存到 `wake_rules.json`，重启 MCP Server 后自动加载 |
-| **`wait_for_reply` 一体化** | `send_message` 默认自动等待回复，无需额外调用 `wait_for_reply` |
-| **SKILL.md 指南** | 完整的 Agent 操作手册，规范对话流程 |
-
-### 优化改进
-
-- **回调式消息驱动**：不再轮询，消息入库时直接触发，零延迟
-- **Win32 原生窗口激活**：`SetForegroundWindow` + `AttachThreadInput`，绕过 UIPI 限制
-- **PowerShell 剪贴板方案**：可靠处理 Unicode 文本粘贴到 opencode
-- **竞态修复**：`_pending` 在 `create_task` 前设置，杜绝并发穿锁
-- **完整中文文档**：README、SKILL.md 均为中文
-
----
-
-## 技术栈
-
-- Python 3.12+ (httpx, aiohttp, FastMCP)
-- NapCat.Shell 4.18.4 (QQ 9.9.26-44343)
-- OneBot v11 协议 (WebSocket + HTTP API)
-- Win32 API (ctypes) — 窗口激活、键盘模拟
+| **Auto-Wake 自动唤醒** | QQ 消息匹配规则时自动激活 AI Agent 窗口。**支持任意客户端** — opencode、Cursor、Claude Desktop、Windsurf，通过 `set_wake_config` 配置窗口标题即可 |
+| **Pending 防重复锁** | 唤醒后自动上锁，防止重复唤醒。Agent 干完活后手动解锁 |
+| **规则持久化** | 唤醒规则自动保存到 `wake_rules.json`，重启后自动加载 |
+| **`wait_for_reply` 一体化** | `send_message` 默认自动等待回复 |
+| **群管理** | 禁言、解禁、踢人、设名片、发公告 |
+| **文件发送** | 从 URL 下载文件发送到群/私聊 |
+| **消息撤回** | 撤回机器人发送的消息 |
+| **定时任务** | 支持 cron 和间隔两种模式的定时唤醒 |
+| **一键配置** | 自动检测 NapCat、端口、多 Agent 配置 |
 
 ## 架构
 
@@ -42,7 +210,7 @@ QQ ←→ NapCat (OneBot v11)
           ↓  WebSocket :3001 / HTTP :3000
     Xadeus-QQ-MCP (Python MCP Server)
           ↓  MCP 协议
-    opencode Desktop (AI Agent)
+    AI Agent (opencode / Cursor / Claude / ...)
 ```
 
 ## 快速开始
@@ -52,24 +220,33 @@ QQ ←→ NapCat (OneBot v11)
 1. 安装 [NapCat.Shell](https://github.com/NapNeko/NapCatQQ) 和 QQ
 2. 配置 NapCat OneBot v11 (WebSocket :3001, HTTP :3000)
 
-### 安装
+### 一键配置（推荐）
 
 ```bash
-# 克隆
-git clone https://github.com/你的用户名/Xadeus-QQ-MCP
+python setup.py
+# 交互式 — 自动检测 NapCat、端口，更新 Agent MCP 配置
+
+# 或静默模式:
+python setup.py --qq 你的QQ号 --fast
+```
+
+### 手动安装
+
+```bash
+git clone https://github.com/mouse114514/Xadeus-QQ-MCP
 cd Xadeus-QQ-MCP
 
-# 创建虚拟环境
+# 虚拟环境
 uv venv
 uv sync
 
-# 启动
+# 启动 MCP Server
 uv run python -m qq_agent_mcp --qq 你的QQ号
 ```
 
-### opencode MCP 配置
+### 配置 AI Agent
 
-编辑 `~/.config/opencode/opencode.json`:
+**opencode** — 编辑 `~/.config/opencode/opencode.json`:
 
 ```json
 {
@@ -88,7 +265,23 @@ uv run python -m qq_agent_mcp --qq 你的QQ号
 }
 ```
 
-## 唤醒目标配置
+**Cursor / Claude Desktop / Windsurf** — 编辑对应 MCP 配置文件:
+
+```json
+{
+  "mcpServers": {
+    "qq-agent": {
+      "command": "C:\\path\\to\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "qq_agent_mcp", "--qq", "你的QQ号"],
+      "enabled": true
+    }
+  }
+}
+```
+
+*运行 `python setup.py` 可自动检测并配置所有已安装的 Agent。*
+
+### 唤醒目标配置
 
 通过 `set_wake_config` 配置窗口标题，即可绑定到任意 AI Agent：
 
@@ -101,26 +294,64 @@ uv run python -m qq_agent_mcp --qq 你的QQ号
 
 配置文件保存在 `src/qq_agent_mcp/wake_config.json`。
 
-## MCP 工具
+## MCP 工具一览
 
-| 分类 | 工具 | 说明 |
-|------|------|------|
-| 消息 | `send_message` | 发文本消息，支持分段、等待回复 |
-| 消息 | `send_image` | 发图片 |
-| 消息 | `send_voice` | 发语音 |
-| 消息 | `wait_for_reply` | 等待新消息 |
-| 上下文 | `get_recent_context` | 查看最近消息 |
-| 上下文 | `batch_get_recent_context` | 批量查看 |
-| 上下文 | `screenshot_chat` | 生成聊天截图 |
-| 上下文 | `compress_context` | 压缩缓存 |
-| 唤醒 | `add_wake_rule` | 添加唤醒规则 |
-| 唤醒 | `set_wake_pending` | 手动管理 pending |
-| 唤醒 | `get_wake_config` | 查看唤醒配置 |
-| 唤醒 | `set_wake_config` | 配置目标窗口标题（**支持任意 AI Agent**） |
-| 唤醒 | `diagnose_wake` | 诊断唤醒状态 |
-| 系统 | `check_status` | 检查连接状态 |
-| 系统 | `get_group_list` | 群列表 |
-| 系统 | `get_friend_list` | 好友列表 |
+### 消息
+| 工具 | 说明 |
+|------|------|
+| `send_message` | 发文本消息，支持分段、等待回复 |
+| `send_image` | 发图片 |
+| `send_voice` | 发语音 |
+| `wait_for_reply` | 等待新消息 |
+
+### 上下文
+| 工具 | 说明 |
+|------|------|
+| `get_recent_context` | 查看最近消息 |
+| `batch_get_recent_context` | 批量查看多目标 |
+| `screenshot_chat` | 生成聊天截图（iPhone 深色模式） |
+| `compress_context` | 压缩缓存 |
+
+### 唤醒系统
+| 工具 | 说明 |
+|------|------|
+| `add_wake_rule` | 添加唤醒规则（群/私聊 + 关键词） |
+| `remove_wake_rule` | 删除唤醒规则 |
+| `list_wake_rules` | 查看所有规则 |
+| `set_wake_pending` | 锁定/解锁唤醒 |
+| `set_wake_enabled` | 启用/禁用规则 |
+| `set_wake_config` | 配置窗口标题和快捷键 |
+| `get_wake_config` | 查看唤醒配置 |
+| `diagnose_wake` | 诊断唤醒状态 |
+
+### 群管理
+| 工具 | 说明 |
+|------|------|
+| `get_group_list` | 群列表 |
+| `get_group_member_list` | 群成员列表 |
+| `get_group_member_info` | 成员详情 |
+| `mute_member` | 禁言 |
+| `unmute_member` | 解禁 |
+| `kick_member` | 踢出 |
+| `set_member_card` | 设群名片 |
+| `send_group_notice` | 发群公告 |
+
+### 系统
+| 工具 | 说明 |
+|------|------|
+| `check_status` | 检查连接状态 |
+| `get_friend_list` | 好友列表 |
+| `recall_message` | 撤回消息 |
+| `send_file` | 发送文件 |
+| `add_timer` | 添加定时任务 |
+| `remove_timer` | 删除定时任务 |
+| `list_timers` | 查看所有定时任务 |
+
+## 技术栈
+
+- Python 3.12+ (httpx, aiohttp, FastMCP)
+- NapCat.Shell (QQ + OneBot v11)
+- Win32 API (ctypes) — 窗口激活、键盘模拟
 
 ## 授权
 
