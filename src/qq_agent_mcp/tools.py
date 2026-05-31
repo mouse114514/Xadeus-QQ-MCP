@@ -1171,7 +1171,8 @@ def register_tools(
             try:
                 text = "[MCP] test wake"
                 patterns = wake_monitor.config.window_title_patterns
-                ok = _type_via_keyboard(text, patterns)
+                shortcut = wake_monitor.config.focus_shortcut
+                ok = _type_via_keyboard(text, patterns, shortcut)
                 return {"success": ok, "message": "Wake executed" if ok else "Wake FAILED"}
             except Exception as e:
                 return {"success": False, "error": str(e)}

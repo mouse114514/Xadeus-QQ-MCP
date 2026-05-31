@@ -197,11 +197,59 @@ def _send_unicode_sendinput(cp: int) -> bool:
     return result == 2
 
 
-def _type_via_console(text: str, hwnd: int) -> bool:
+def _send_shortcut(shortcut: str) -> bool:
+    """Parse and send a shortcut like 'ctrl+l' or 'ctrl+shift+a'."""
+    parts = shortcut.lower().split("+")
+    if len(parts) < 2:
+        return False
+    mods = parts[:-1]
+    key = parts[-1]
+    vk = _key_name_to_vk(key)
+    if vk is None:
+        return False
+    mod_vks = []
+    for m in mods:
+        if m == "ctrl":
+            mod_vks.append(VK_CONTROL)
+        elif m == "shift":
+            mod_vks.append(0x10)
+        elif m == "alt":
+            mod_vks.append(0x12)
+    for mvk in mod_vks:
+        _send_key(mvk)
+        time.sleep(0.03)
+    _send_key(vk)
+    time.sleep(0.03)
+    _send_key(vk, up=True)
+    time.sleep(0.03)
+    for mvk in reversed(mod_vks):
+        _send_key(mvk, up=True)
+        time.sleep(0.03)
+    time.sleep(0.05)
+    return True
+
+
+def _key_name_to_vk(name: str) -> int | None:
+    mapping = {
+        "a": 0x41, "b": 0x42, "c": 0x43, "d": 0x44, "e": 0x45,
+        "f": 0x46, "g": 0x47, "h": 0x48, "i": 0x49, "j": 0x4A,
+        "k": 0x4B, "l": 0x4C, "m": 0x4D, "n": 0x4E, "o": 0x4F,
+        "p": 0x50, "q": 0x51, "r": 0x52, "s": 0x53, "t": 0x54,
+        "u": 0x55, "v": 0x56, "w": 0x57, "x": 0x58, "y": 0x59,
+        "z": 0x5A,
+        "0": 0x30, "1": 0x31, "2": 0x32, "3": 0x33, "4": 0x34,
+        "5": 0x35, "6": 0x36, "7": 0x37, "8": 0x38, "9": 0x39,
+    }
+    return mapping.get(name)
+
+
+def _type_via_console(text: str, hwnd: int, focus_shortcut: str = "ctrl+l") -> bool:
     """Type text via keybd_event. text is guaranteed ASCII-only."""
     if not _activate_window(hwnd):
         return False
     time.sleep(0.3)
+    _send_shortcut(focus_shortcut)
+    time.sleep(0.15)
 
     for ch in text:
         cp = ord(ch)
@@ -236,7 +284,8 @@ def _type_via_console(text: str, hwnd: int) -> bool:
     return True
 
 
-def _type_via_keyboard(text: str, patterns: list[str] | None = None) -> bool:
+def _type_via_keyboard(text: str, patterns: list[str] | None = None,
+                       focus_shortcut: str = "ctrl+l") -> bool:
     """Type text directly into console (WriteConsoleInputW)."""
     global _last_paste_text, _last_paste_time
 
@@ -261,7 +310,7 @@ def _type_via_keyboard(text: str, patterns: list[str] | None = None) -> bool:
             logger.warning("opencode window not found")
             return False
 
-        if not _type_via_console(text, hwnd):
+        if not _type_via_console(text, hwnd, focus_shortcut):
             logger.warning("Console input injection failed")
             return False
 
@@ -273,7 +322,9 @@ def _type_via_keyboard(text: str, patterns: list[str] | None = None) -> bool:
         _CLIPBOARD_LOCK.release()
 
 
-_type_via_clipboard = _type_via_keyboard
+def _type_via_clipboard(text: str, patterns: list[str] | None = None) -> bool:
+    """Backwards-compat wrapper (callers pass (text, patterns), no shortcut)."""
+    return _type_via_keyboard(text, patterns, "ctrl+l")
 
 
 # ── 规则系统 ──────────────────────────────────────────────
@@ -560,9 +611,9 @@ class WakeMonitor:
         """直接唤醒窗口并输入指定文本（用于定时任务等）。"""
         loop = asyncio.get_event_loop()
         try:
-            ok = await loop.run_in_executor(
-                None, _type_via_clipboard, text, self.config.window_title_patterns,
-            )
+            fn = lambda: _type_via_keyboard(
+                text, self.config.window_title_patterns, self.config.focus_shortcut)
+            ok = await loop.run_in_executor(None, fn)
             logger.info("Wake via message: %s (ok=%s)", text, ok)
             return ok
         except Exception as e:
@@ -576,7 +627,7 @@ class WakeMonitor:
             self._on_wake(target_type, target_id, msg)
 
         try:
-            ok = _type_via_clipboard(text, self.config.window_title_patterns)
+            ok = _type_via_keyboard(text, self.config.window_title_patterns, self.config.focus_shortcut)
             logger.info("Wake activation result: %s", ok)
         except Exception as e:
             logger.error("Wake activation error: %s", e)
