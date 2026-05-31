@@ -40,14 +40,29 @@ QQ ←→ NapCat (OneBot v11)
 1. Install [NapCat.Shell](https://github.com/NapNeko/NapCatQQ) and QQ
 2. Configure NapCat OneBot v11 (WebSocket :3001, HTTP :3000)
 
-### One-Click Setup
+### One-Click Setup (Recommended)
 
+```powershell
+.\quickstart.ps1 -qq 你的QQ号
+```
+
+Auto-detects NapCat, configures HTTP:3000/WS:3001, creates Python venv,
+writes QQ_OVERRIDE, generates NapCat start script.
+
+Or with a config file:
+```powershell
+.\quickstart.ps1 -configFile config.json
+```
+
+**Restart helper** (kill stale MCP + wait for recovery):
+```powershell
+.\quickstart.ps1 -restart
+```
+
+Also available via Python:
 ```bash
-python setup.py
-# Interactive — detects NapCat, configures ports, updates agent MCP config
-
-# Or non-interactive:
-python setup.py --qq YOUR_QQ --fast
+python setup.py          # Interactive mode
+python setup.py --qq YOUR_QQ --fast   # Non-interactive
 ```
 
 ### Manual Setup
@@ -181,7 +196,7 @@ Saved to `src/qq_agent_mcp/wake_config.json`.
 
 | Issue | Cause | Workaround |
 |-------|-------|------------|
-| **MCP won't restart** after crash/kill | opencode has restart backoff; after ~3 kills it stops retrying | Restart your AI agent, or use `restart.ps1` |
+| **MCP won't restart** after crash/kill | opencode has restart backoff; after ~3 kills it stops retrying | Restart your AI agent, or `.\quickstart.ps1 -restart` |
 | **Two MCP processes** always appear | FastMCP stdio transport spawns parent+child chain | Named mutex prevents duplicate typing (built-in fix) |
 | **Config changes ignored** after editing `opencode.json` | opencode caches MCP command at startup | Restart opencode, or use `QQ_OVERRIDE` env var |
 | **Wake message doubled** | Both processes try to type simultaneously | Fixed via Windows named mutex (`Local\XadeusQQ_MCP_WakeTyping`) |
@@ -191,7 +206,7 @@ Saved to `src/qq_agent_mcp/wake_config.json`.
 ### Restart Helper
 
 ```powershell
-.\restart.ps1
+.\quickstart.ps1 -restart
 ```
 
 Kills stale MCP processes and waits for auto-restart. If the agent doesn't
@@ -252,12 +267,27 @@ QQ ←→ NapCat (OneBot v11)
 
 ### 一键配置（推荐）
 
-```bash
-python setup.py
-# 交互式 — 自动检测 NapCat、端口，更新 Agent MCP 配置
+```powershell
+.\quickstart.ps1 -qq 你的QQ号
+```
 
-# 或静默模式:
-python setup.py --qq 你的QQ号 --fast
+自动检测 NapCat、配置 HTTP:3000/WS:3001、创建 Python venv、
+写入 QQ_OVERRIDE、生成 NapCat 启动脚本。
+
+支持配置文件：
+```powershell
+.\quickstart.ps1 -configFile config.json
+```
+
+**重启助手**（杀死残留 MCP + 等待恢复）：
+```powershell
+.\quickstart.ps1 -restart
+```
+
+Python 版（功能相同）：
+```bash
+python setup.py                           # 交互模式
+python setup.py --qq 你的QQ号 --fast       # 静默模式
 ```
 
 ### 手动安装
@@ -391,7 +421,7 @@ uv run python -m qq_agent_mcp --qq 你的QQ号
 
 | 问题 | 原因 | 解决方法 |
 |------|------|----------|
-| **MCP 被杀后无法自启** | opencode 有重启退避策略 | 重启 AI Agent，或用 `restart.ps1` |
+| **MCP 被杀后无法自启** | opencode 有重启退避策略 | 重启 AI Agent，或 `.\quickstart.ps1 -restart` |
 | **总是有两个 MCP 进程** | FastMCP stdio 产生父子进程链 | 内置命名互斥锁解决重复打字 |
 | **改 opencode.json 不生效** | opencode 启动时缓存命令 | 重启 opencode，或用 `QQ_OVERRIDE` 环境变量 |
 | **唤醒消息出现双倍字符** | 两个进程同时打字 | 已修复（Windows 命名互斥锁） |
@@ -401,7 +431,7 @@ uv run python -m qq_agent_mcp --qq 你的QQ号
 ### 重启助手
 
 ```powershell
-.\restart.ps1
+.\quickstart.ps1 -restart
 ```
 
 杀死残留 MCP 进程并等待自动重启。如果 Agent 不自动恢复，会提示你手动重启。

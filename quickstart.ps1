@@ -4,6 +4,7 @@ param(
     [string]$napcatDir,
     [int]$httpPort = 3000,
     [int]$wsPort = 3001,
+    [switch]$restart,
     [switch]$help
 )
 
@@ -12,14 +13,38 @@ if ($help) {
 Xadeus-QQ-MCP Quick Start
 
 Usage:
-    .\quickstart.ps1 -qq 123456
-    .\quickstart.ps1 -configFile config.json
-    .\quickstart.ps1 -qq 123456 -napcatDir "C:\NapCatQQ"
+    .\quickstart.ps1 -qq 123456           # Full setup (NapCat + venv + config)
+    .\quickstart.ps1 -qq 123456 -restart   # Kill stale MCP + wait for recovery
+    .\quickstart.ps1 -configFile cfg.json  # Setup from config file
 
-Config file format (config.json):
+Config file format (cfg.json):
     { "qq": "123456", "napcat_path": "C:\\NapCatQQ", "http_port": 3000, "ws_port": 3001 }
 "@
     exit
+}
+
+# ── Restart mode: kill MCP processes and wait for agent to recover ──
+if ($restart) {
+    Write-Host "=== Restart Mode ===" -ForegroundColor Cyan
+    $procs = Get-CimInstance Win32_Process -Filter "Name='python.exe' AND CommandLine LIKE '%qq_agent_mcp%'"
+    if ($procs) {
+        Write-Host "Killing $($procs.Count) stale MCP process(es)..." -ForegroundColor Yellow
+        $procs | ForEach-Object { Stop-Process -Id $_.ProcessId -Force }
+        Start-Sleep 2
+    } else {
+        Write-Host "No stale MCP processes found." -ForegroundColor Green
+    }
+    Write-Host "Waiting for agent to auto-restart MCP..." -ForegroundColor Cyan
+    for ($i = 0; $i -lt 15; $i++) {
+        Start-Sleep 2
+        $newProcs = Get-CimInstance Win32_Process -Filter "Name='python.exe' AND CommandLine LIKE '%qq_agent_mcp%'"
+        if ($newProcs) {
+            Write-Host "MCP restarted! PID(s): $($newProcs.ProcessId -join ', ')" -ForegroundColor Green
+            exit 0
+        }
+    }
+    Write-Host "MCP did not restart. Restart your AI agent manually." -ForegroundColor Red
+    exit 1
 }
 
 # ── Load config file if provided ──
