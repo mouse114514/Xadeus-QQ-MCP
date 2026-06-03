@@ -228,7 +228,7 @@ Based on Amadeus-QQ-MCP (MIT License).
 
 # Xadeus-QQ-MCP
 
-> **由一位 13 岁初中生基于 [Amadeus-QQ-MCP](https://github.com/Sakura325/Amadeus-QQ-MCP) 深度优化改造。**
+> **由一位 15 岁高中生基于 [Amadeus-QQ-MCP](https://github.com/Sakura325/Amadeus-QQ-MCP) 深度优化改造。**
 
 QQ MCP (Model Context Protocol) Server — 通过 NapCatQQ (OneBot v11) 协议连接 QQ，为 AI Agent 提供直接操控 QQ 的能力（收发消息、管理群聊、自动唤醒等）。
 
