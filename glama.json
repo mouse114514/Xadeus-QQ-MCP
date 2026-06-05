@@ -1,0 +1,47 @@
+{
+  "$schema": "https://glama.ai/schemas/glama.json",
+  "name": "Xadeus-QQ-MCP",
+  "description": "QQ MCP Server with Auto-Wake, message send/receive, group management, file sharing, and timed tasks. Connects via NapCatQQ (OneBot v11).",
+  "runtime": {
+    "type": "python",
+    "version": "3.11",
+    "entrypoint": "qq-agent-mcp"
+  },
+  "dockerfile": "Dockerfile",
+  "license": "MIT",
+  "env": [
+    {
+      "name": "QQ_OVERRIDE",
+      "description": "QQ account number for the bot",
+      "required": true,
+      "default": "3838379219"
+    },
+    {
+      "name": "NAPCAT_HOST",
+      "description": "NapCat OneBot HTTP host",
+      "required": false,
+      "default": "127.0.0.1"
+    },
+    {
+      "name": "NAPCAT_PORT",
+      "description": "NapCat OneBot HTTP port",
+      "required": false,
+      "default": "3000"
+    },
+    {
+      "name": "WS_PORT",
+      "description": "NapCat WebSocket port",
+      "required": false,
+      "default": "3001"
+    },
+    {
+      "name": "LOG_LEVEL",
+      "description": "Log level (debug, info, warning, error)",
+      "required": false,
+      "default": "info"
+    }
+  ],
+  "categories": ["messaging", "communication", "social"],
+  "tags": ["qq", "napcat", "onebot", "chat", "group-management", "mcp-server"],
+  "homepage": "https://github.com/mouse114514/Xadeus-QQ-MCP"
+}
