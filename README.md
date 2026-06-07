@@ -2,6 +2,8 @@
 
 > Built by a 15-year-old developer, based on [Amadeus-QQ-MCP](https://github.com/Sakura325/Amadeus-QQ-MCP).
 
+[![Xadeus-QQ-MCP MCP server](https://glama.ai/mcp/servers/mouse114514/Xadeus-QQ-MCP/badges/card.svg)](https://glama.ai/mcp/servers/mouse114514/Xadeus-QQ-MCP)
+
 QQ MCP (Model Context Protocol) Server — connects to QQ via NapCatQQ (OneBot v11), giving AI agents direct control over QQ (send/receive messages, group management, auto-wake on incoming messages, and more).
 
 [![Python 3.12+](https://img.shields.io/badge/python-3.12%2B-blue)]()
@@ -99,7 +101,7 @@ uv run python -m qq_agent_mcp --qq YOUR_QQ
     "qq-agent": {
       "type": "local",
       "command": [
-        "C:\\path\\to\\.venv\\Scripts\\python.exe",
+        "C:\\path\\.venv\\Scripts\\python.exe",
         "-m", "qq_agent_mcp",
         "--qq", "YOUR_QQ"
       ],
@@ -116,7 +118,7 @@ uv run python -m qq_agent_mcp --qq YOUR_QQ
 {
   "mcpServers": {
     "qq-agent": {
-      "command": "C:\\path\\to\\.venv\\Scripts\\python.exe",
+      "command": "C:\\path\\.venv\\Scripts\\python.exe",
       "args": ["-m", "qq_agent_mcp", "--qq", "YOUR_QQ"],
       "enabled": true
     }
@@ -324,7 +326,7 @@ uv run python -m qq_agent_mcp --qq 你的QQ号
     "qq-agent": {
       "type": "local",
       "command": [
-        "C:\\path\\to\\.venv\\Scripts\\python.exe",
+        "C:\\path\\.venv\\Scripts\\python.exe",
         "-m", "qq_agent_mcp",
         "--qq", "你的QQ号"
       ],
@@ -341,7 +343,7 @@ uv run python -m qq_agent_mcp --qq 你的QQ号
 {
   "mcpServers": {
     "qq-agent": {
-      "command": "C:\\path\\to\\.venv\\Scripts\\python.exe",
+      "command": "C:\\path\\.venv\\Scripts\\python.exe",
       "args": ["-m", "qq_agent_mcp", "--qq", "你的QQ号"],
       "enabled": true
     }
