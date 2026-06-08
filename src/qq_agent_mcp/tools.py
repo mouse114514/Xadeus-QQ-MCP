@@ -290,9 +290,17 @@ def register_tools(
 ) -> None:
     """Register all MCP tools on the FastMCP server instance."""
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
     async def check_status() -> dict:
-        """Check QQ login status and NapCat connection status."""
+        """Check QQ login status, NapCat connection, and monitored targets.
+
+        Returns the bot's QQ account, online status, uptime, list of monitored
+        groups and friends, and buffer statistics. Use this to verify the server
+        is running correctly before calling other tools. Not the same as
+        get_group_list or get_friend_list — this is a health check, not a query.
+
+        Read-only. No side effects. Safe to call at any time.
+        """
         try:
             login_info = await bot.get_login_info()
         except Exception as e:
@@ -366,9 +374,18 @@ def register_tools(
             "buffer_stats": ctx.buffer_stats,
         }
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
     async def get_group_list() -> dict:
-        """Get the list of QQ groups the bot has joined."""
+        """List all QQ groups the bot has joined.
+
+        Returns group IDs, names, and member counts for every group the bot is
+        a member of. Use this to discover valid group IDs for send_message,
+        get_recent_context, or other group-targeting tools. For friend list use
+        get_friend_list instead. For batch name resolution use
+        batch_get_recent_context.
+
+        Read-only. No side effects.
+        """
         groups = await bot.get_group_list()
         return {
             "groups": [
@@ -381,9 +398,16 @@ def register_tools(
             ]
         }
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
     async def get_friend_list() -> dict:
-        """Get the list of QQ friends."""
+        """List all QQ friends of the bot account.
+
+        Returns user IDs and nicknames. Use this to discover valid friend IDs
+        for send_message or get_recent_context with target_type="private". For
+        group list use get_group_list instead.
+
+        Read-only. No side effects.
+        """
         friends = await bot.get_friend_list()
         return {
             "friends": [
@@ -395,22 +419,24 @@ def register_tools(
             ]
         }
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
     async def get_recent_context(
         target: str,
         target_type: str = "group",
         limit: int = 200,
     ) -> dict:
-        """Get recent message context for a monitored group or whitelisted friend.
+        """Retrieve recent messages for one group or friend from the in-memory buffer.
 
-        Returns all buffered messages (backfill + real-time) without compression.
-        Use compress_context to manually compress when needed.
-        Images are returned as URL strings in each message's image_urls field.
+        Returns buffered messages (backfill from history + real-time via WebSocket)
+        as raw message objects with sender info, content, timestamps, and image
+        URLs. This is the primary tool for reading chat context. For multiple
+        targets at once, use batch_get_recent_context instead (fewer API calls).
+        To archive old messages and free buffer space, use compress_context.
 
-        Args:
-            target: Group ID or friend QQ ID.
-            target_type: "group" (default) or "private".
-            limit: Number of recent messages to return (default 200).
+        Messages older than the buffer window are lost. Call compress_context
+        periodically to preserve important conversations.
+
+        Read-only. No side effects on the chat.
         """
         # Whitelist check
         if target_type == "group":
@@ -448,23 +474,22 @@ def register_tools(
 
         return result
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
     async def batch_get_recent_context(
         targets: list[dict],
         limit: int = 50,
     ) -> dict:
-        """Batch query recent message context for multiple targets.
+        """Query recent messages for multiple groups/friends in one call.
 
-        More efficient than calling get_recent_context multiple times:
-        uses at most 2 OneBot API calls (group list + friend list) regardless
-        of how many targets are queried.
+        More efficient than calling get_recent_context multiple times: uses at
+        most 2 OneBot API calls (one for group names, one for friend names)
+        regardless of how many targets you query. Each target's messages are
+        returned independently with errors for unmonitored targets.
 
-        Args:
-            targets: List of dicts, each with "target" (ID) and optional
-                     "target_type" ("group" or "private", default "group").
-                     Example: [{"target": "123", "target_type": "group"},
-                               {"target": "456", "target_type": "private"}]
-            limit: Number of recent messages per target (default 50).
+        Use this when you need to read context from 2+ conversations at once.
+        For a single target, use get_recent_context instead (simpler).
+
+        Read-only. No side effects.
         """
         limit = max(1, min(limit, 200))
 
@@ -535,7 +560,7 @@ def register_tools(
 
         return {"results": results, "count": len(results)}
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True})
     async def send_message(
         target: str,
         content: str,
@@ -545,33 +570,21 @@ def register_tools(
         num_chunks: int | None = None,
         wait_reply: bool = True,
     ) -> dict:
-        """Send a message to a monitored group or whitelisted friend.
-        By default automatically waits for a reply after sending.
+        """Send a text message to a QQ group or friend, optionally waiting for a reply.
 
-        Preferred way to send multiple messages: insert `</分段>` in the content
-        at each desired split point. Each segment becomes its own message; the
-        tag itself is stripped. Example:
-            content = "吃了吗</分段>今天忙不忙"
-        sends two messages: "吃了吗" and "今天忙不忙". Use this whenever you want
-        to split a reply into multiple messages — it is more natural than
-        `num_chunks` because you choose the split points yourself.
+        This is the primary tool for sending text messages. It supports message
+        splitting via </分段> tags or punctuation-based chunking. The message is
+        sent immediately and the bot's own message is written to the buffer.
 
-        Args:
-            target: Group ID or friend QQ ID.
-            content: Text message content. May contain `</分段>` markers to
-                specify exact split points between messages.
-            target_type: "group" (default) or "private".
-            reply_to: Optional message ID to reply to.
-            split_content: If True (and content has no `</分段>` tag), auto-split
-                short messages (≤100 chars) on punctuation. Default False.
-            num_chunks: Force exactly this many chunks via punctuation-based
-                merging. Overrides the `</分段>` tag. Set to 1 to force a single
-                message even when the content contains `</分段>`.
-            wait_reply: If True (default), blocks and waits for a reply after
-                sending. If False, returns immediately without waiting.
+        To split a reply into multiple messages, insert </分段> at split points.
+        For example: "Hi</分段>How are you?" sends two separate messages.
 
-        Split-point priority: num_chunks=1 → num_chunks≥2 → `</分段>` tag →
-        split_content → single message.
+        Behavior: rate-limited (60s dedup window), duplicate content within 60s
+        is blocked. After sending, blocks until a reply arrives (unless
+        wait_reply=False). The reply includes the full message objects.
+
+        Use send_image for images, send_voice for audio, send_file for files.
+        For a standalone wait without sending, use wait_for_reply.
         """
         # Whitelist check
         if target_type == "group":
@@ -703,25 +716,23 @@ def register_tools(
 
         return result
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": True})
     async def wait_for_reply(
         target: str,
         target_type: str = "group",
         timeout: float = 120.0,
     ) -> dict:
-        """Wait for a new reply/message from a target.
+        """Block until a new message arrives from a specific group or friend.
 
-        Blocks until a new message arrives from the specified target
-        or the timeout expires. Returns any new messages received.
-        Only returns non-self messages (others' replies, not the bot's own).
+        Use this as a standalone follow-up after send_message (with
+        wait_reply=False) or when you need to wait for a reply without sending
+        first. Returns only messages from others (not the bot's own). Times out
+        after `timeout` seconds (max 300).
 
-        Use this after send_message to wait for the other person's reply
-        and continue the conversation in one agent turn.
+        If you want to send a message AND wait for a reply in one call, use
+        send_message with wait_reply=True instead — it's simpler.
 
-        Args:
-            target: Group ID or friend QQ ID.
-            target_type: "group" (default) or "private".
-            timeout: Maximum seconds to wait (default 120, max 300).
+        Read-only. No side effects on the chat.
         """
         if target_type == "group":
             if not config.is_group_monitored(target):
@@ -773,20 +784,22 @@ def register_tools(
 
         return result
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True})
     async def send_image(
         target: str,
         image: str,
         target_type: str = "group",
         reply_to: str | None = None,
     ) -> dict:
-        """Send an image to a monitored group or whitelisted friend.
+        """Send a base64-encoded image to a QQ group or friend.
 
-        Args:
-            target: Group ID or friend QQ ID.
-            image: Base64-encoded image data (without the base64:// prefix).
-            target_type: "group" (default) or "private".
-            reply_to: Optional message ID to reply to.
+        For text messages use send_message. For audio use send_voice. For files
+        use send_file. This tool only sends images.
+
+        Behavior: same rate limiting and dedup as send_message. The image is
+        sent as a QQ-native image (not a file attachment).
+
+        Mutates the chat by sending an image.
         """
         # Whitelist check
         if target_type == "group":
@@ -845,20 +858,22 @@ def register_tools(
             "timestamp": datetime.now(CST).isoformat(),
         }
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True})
     async def send_voice(
         target: str,
         audio: str,
         target_type: str = "group",
     ) -> dict:
-        """Send a voice message to a monitored group or whitelisted friend.
+        """Send a base64-encoded voice message to a QQ group or friend.
 
-        NapCat auto-converts common formats (MP3/WAV/AMR/OGG/FLAC) to SILK.
+        NapCat auto-converts common audio formats (MP3, WAV, AMR, OGG, FLAC)
+        to SILK for QQ voice playback. For text use send_message, for images
+        use send_image, for files use send_file.
 
-        Args:
-            target: Group ID or friend QQ ID.
-            audio: Base64-encoded audio data (without the base64:// prefix).
-            target_type: "group" (default) or "private".
+        Behavior: same rate limiting as send_message. Voice messages cannot be
+        replied to (no reply_to parameter).
+
+        Mutates the chat by sending a voice message.
         """
         # Whitelist check
         if target_type == "group":
@@ -904,22 +919,23 @@ def register_tools(
             "timestamp": datetime.now(CST).isoformat(),
         }
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": False, "openWorldHint": True})
     async def send_file(
         target: str,
         file_url: str,
         file_name: str | None = None,
         target_type: str = "group",
     ) -> dict:
-        """下载 URL 文件并发送到群或私聊。
+        """Download a file from a URL and send it to a QQ group or friend.
 
-        从 URL 下载文件然后上传到 QQ。支持任意文件类型。
+        Downloads the file to a temporary directory, uploads it to QQ, then
+        cleans up. Supports any file type. For text use send_message, for
+        images use send_image, for audio use send_voice.
 
-        Args:
-            target: 群号或 QQ 号。
-            file_url: 文件的直接下载 URL。
-            file_name: 文件名（可选，默认从 URL 提取）。
-            target_type: "group"（默认）或 "private"。
+        Behavior: requires a publicly accessible URL (no auth). Download
+        timeout is 60 seconds. The file is sent as a QQ file attachment.
+
+        Mutates the chat by sending a file.
         """
         import os
         import tempfile
@@ -966,20 +982,24 @@ def register_tools(
             "target_type": target_type,
         }
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": False, "openWorldHint": False})
     async def compress_context(
         target: str,
         ctx_mcp: Context,
         target_type: str = "group",
     ) -> dict:
-        """Compress all buffered messages for a target into a summary.
+        """Compress all buffered messages for a target into a single summary, freeing buffer space.
 
-        This replaces raw messages with a compressed summary, freeing up the buffer.
-        Use this after reading context when you want to archive old messages.
+        This is destructive: raw messages are replaced by a compressed summary.
+        Once compressed, individual messages cannot be recovered from the buffer.
+        Use this after get_recent_context when you want to archive old
+        conversations and make room for new messages.
 
-        Args:
-            target: Group ID or friend QQ ID.
-            target_type: "group" (default) or "private".
+        The compression uses the client LLM (via MCP sampling) to generate a
+        concise summary. Falls back to rule-based compression if LLM is
+        unavailable.
+
+        Destructive: permanently replaces raw messages with a summary.
         """
         # Whitelist check
         if target_type == "group":
@@ -1027,26 +1047,27 @@ def register_tools(
             "compressed_summary": buf.compressed_summary,
         }
 
-    @mcp.tool()
+    @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
     async def screenshot_chat(
         target: str,
         message_id: str,
         target_type: str = "group",
     ) -> dict:
-        """Take a QQ-style screenshot of chat messages starting from a specific message.
+        """Render a QQ-style dark-mode chat screenshot starting from a given message.
 
-        Renders messages as a dark-mode QQ chat screenshot (iPhone style) and
-        returns a base64-encoded PNG image.
+        Uses Playwright to render messages as an iPhone-style QQ chat screenshot
+        and returns a base64-encoded PNG image. The screenshot starts from the
+        given message_id and renders downward. If messages fit on one screen,
+        earlier messages are prepended to fill it (bottom-aligned). If they
+        overflow, later messages are cut off.
 
-        The screenshot starts from the given message_id and renders downward.
-        If the messages fit on one screen, earlier messages are prepended to
-        fill the screen (bottom-aligned). If they overflow, later messages
-        are cut off at the bottom.
+        Requires: Playwright browser (lazy-started on first call). If the
+        message_id is not found in the buffer, returns an error.
 
-        Args:
-            target: Group ID or friend QQ ID.
-            message_id: The message ID to start rendering from.
-            target_type: "group" (default) or "private".
+        Use get_recent_context first to find valid message_ids. The screenshot
+        is read-only and does not modify the chat.
+
+        Read-only. No side effects on the chat.
         """
         from .renderer import render_to_base64, measure_chat_height
 
@@ -1164,9 +1185,16 @@ def register_tools(
 
     if wake_monitor is not None:
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def test_wake_activation() -> dict:
-            """Manually trigger the wake activation sequence (for testing)."""
+            """Manually trigger the wake activation sequence to verify it works.
+
+            Sends a test keystroke to the opencode window. Use this to verify
+            the wake system is functional. On Linux, this always returns False
+            (wake is Windows-only). Does not affect any QQ messages.
+
+            Read-only with respect to QQ. May type text into opencode window.
+            """
             from .wake import _type_via_keyboard
             try:
                 text = "[MCP] test wake"
@@ -1177,9 +1205,16 @@ def register_tools(
             except Exception as e:
                 return {"success": False, "error": str(e)}
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def debug_wake_pipeline(target_type: str = "private", target_id: str = "3838379219") -> dict:
-            """Debug the wake pipeline by simulating what happens when a message arrives."""
+            """Simulate a wake trigger to debug the wake pipeline.
+
+            Creates a fake message and checks: callback is set, rules match,
+            pending state, and running state. Invokes the callback to test the
+            full pipeline. Use diagnose_wake for a read-only state check.
+
+            Read-only with respect to QQ. May invoke the wake callback.
+            """
             try:
                 from .context import Message
                 msg = Message(
@@ -1210,9 +1245,16 @@ def register_tools(
             except Exception as e:
                 return {"error": str(e)}
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def diagnose_wake() -> dict:
-            """Debug wake monitor state."""
+            """Return the current state of the wake monitor for debugging.
+
+            Shows: running status, active rules, whether the message callback
+            is registered, and total buffered messages. For testing the pipeline
+            with a fake message, use debug_wake_pipeline instead.
+
+            Read-only. No side effects.
+            """
             return {
                 "monitor_created": True,
                 "running": wake_monitor._running,
@@ -1222,21 +1264,25 @@ def register_tools(
                 "total_buffered": ctx.buffer_stats["total_messages_buffered"],
             }
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def add_wake_rule(
             target_type: str,
             target_id: str | None = None,
             keywords: list[str] | None = None,
             ignore_if_focused: bool = True,
         ) -> dict:
-            """Add a wake rule: when a matching message arrives, opencode wakes up.
+        """Add a wake rule: when a matching message arrives, opencode wakes up.
 
-            Args:
-                target_type: "group" or "private".
-                target_id: Specific group or friend QQ ID (None = any).
-                keywords: Keywords to match (empty list = any message).
-                ignore_if_focused: Skip wake if opencode window already focused (default True).
-            """
+        When a message matches this rule, the agent is activated and the message
+        context is made available. Use add_wake_rule to create rules,
+        list_wake_rules to see them, remove_wake_rule to delete, and
+        set_wake_enabled to toggle.
+
+        Rules are persisted to disk and survive restarts. Keywords are optional:
+        empty list matches any message. target_id=None matches any source.
+
+        Mutates the wake rule configuration.
+        """
             idx = wake_monitor.add_rule(target_type, target_id, keywords, ignore_if_focused)
             return {
                 "success": True,
@@ -1250,32 +1296,41 @@ def register_tools(
                 },
             }
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def list_wake_rules() -> dict:
-            """List all wake rules for auto-wake."""
+        """List all configured wake rules with their index, target, and keywords.
+
+        Use add_wake_rule to create, remove_wake_rule to delete, and
+        set_wake_enabled to toggle individual rules.
+
+        Read-only. No side effects.
+        """
             return {"rules": wake_monitor.list_rules()}
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False})
         async def remove_wake_rule(index: int) -> dict:
-            """Remove a wake rule by index.
+        """Remove a wake rule by its index (from list_wake_rules).
 
-            Args:
-                index: Index of the rule to remove (from list_wake_rules).
-            """
+        This is destructive: the rule is permanently deleted. Use
+        set_wake_enabled to temporarily disable instead.
+
+        Destructive: permanently removes the rule.
+        """
             ok = wake_monitor.remove_rule(index)
             return {"success": ok}
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def set_wake_enabled(
             enabled: bool,
             index: int | None = None,
         ) -> dict:
-            """Enable or disable wake rules.
+        """Enable or disable wake rules. Pass index for one rule, or omit for all.
 
-            Args:
-                enabled: True to enable, False to disable.
-                index: Rule index (None = all rules).
-            """
+        Disabling a rule pauses wake triggers without deleting it. Use
+        remove_wake_rule to permanently delete, add_wake_rule to create new.
+
+        Mutates rule enabled state.
+        """
             if index is not None:
                 ok = wake_monitor.set_enabled(index, enabled)
             else:
@@ -1283,85 +1338,95 @@ def register_tools(
                 ok = True
             return {"success": ok}
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def set_wake_pending(pending: bool) -> dict:
-            """Manually set wake pending state.
+        """Manually lock or unlock wake triggers.
 
-            When pending=True, new messages will NOT trigger wake.
-            When pending=False, new messages will trigger wake normally.
-            Use this to prevent duplicate wakes while the agent is working.
+        When pending=True, incoming messages matching rules will NOT trigger
+        wake. When pending=False, normal wake behavior resumes. Use this to
+        prevent duplicate wakes while the agent is already working. Auto-expires
+        after 5 minutes.
 
-            Args:
-                pending: True to block wakes, False to allow.
-            """
+        Mutates the pending lock state.
+        """
             wake_monitor.set_pending(pending)
             return {"success": True, "pending": pending}
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def get_wake_config() -> dict:
-            """Get current wake config (window title patterns, shortcuts)."""
+        """Return the current wake configuration: window title patterns and focus shortcut.
+
+        Use set_wake_config to modify. Read-only.
+        """
             return wake_monitor.get_config()
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def set_wake_config(
             window_title_patterns: list[str] | None = None,
             focus_shortcut: str | None = None,
         ) -> dict:
-            """Configure wake target window.
+        """Configure which window to activate and how to focus its input box.
 
-            Args:
-                window_title_patterns: List of window title substrings to match (e.g. ["opencode", "cursor"]).
-                focus_shortcut: Shortcut to focus input box, e.g. "ctrl+l".
-            """
+        window_title_patterns: substrings to match against window titles
+        (e.g. ["opencode", "cursor"]). focus_shortcut: keyboard shortcut to
+        focus the input (e.g. "ctrl+l"). Use get_wake_config to read current
+        values.
+
+        Mutates the wake configuration.
+        """
             wake_monitor.set_config(window_title_patterns, focus_shortcut)
             return {"success": True, "config": wake_monitor.get_config()}
 
         # ── 群管理 ──────────────────────────────────────────
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False})
         async def mute_member(
             group_id: str,
             user_id: str,
             duration: int = 600,
         ) -> dict:
-            """禁言群成员。
+        """Mute a member in a QQ group for a specified duration.
 
-            Args:
-                group_id: 群号。
-                user_id: 被禁言的 QQ 号。
-                duration: 禁言时长（秒），默认 600 秒（10分钟）。
-            """
+        Mutes the user for `duration` seconds (default 600 = 10 minutes).
+        Use unmute_member to reverse. Use kick_member to remove from group.
+        Requires bot to have admin privileges in the group.
+
+        Destructive: restricts a user's ability to speak.
+        """
             try:
                 await bot.set_group_ban(group_id, user_id, duration)
                 return {"success": True, "group_id": group_id, "user_id": user_id, "duration": duration}
             except Exception as e:
                 return {"success": False, "error": str(e)}
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def unmute_member(group_id: str, user_id: str) -> dict:
-            """解除群成员禁言。
+        """Remove a mute from a member in a QQ group.
 
-            Args:
-                group_id: 群号。
-                user_id: 被解禁的 QQ 号。
-            """
+        Reverses a mute applied by mute_member. Safe to call on non-muted
+        members (no-op). Requires bot to have admin privileges.
+
+        Mutates: restores the user's ability to speak.
+        """
             try:
                 await bot.set_group_ban(group_id, user_id, 0)
                 return {"success": True, "group_id": group_id, "user_id": user_id}
             except Exception as e:
                 return {"success": False, "error": str(e)}
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False})
         async def kick_member(
             group_id: str, user_id: str, reject_add_request: bool = False,
         ) -> dict:
-            """踢出群成员。
+        """Kick a member from a QQ group, optionally blocking re-entry.
 
-            Args:
-                group_id: 群号。
-                user_id: 被踢的 QQ 号。
-                reject_add_request: 是否拒绝再次加群请求。
-            """
+        Removes the user from the group. If reject_add_request=True, future
+        join requests from this user are automatically rejected. Use
+        mute_member for temporary restrictions. Requires bot to have admin
+        privileges.
+
+        Destructive: permanently removes the user from the group.
+        """
             try:
                 await bot.set_group_kick(group_id, user_id, reject_add_request)
                 action = "并拉黑" if reject_add_request else ""
@@ -1369,29 +1434,31 @@ def register_tools(
             except Exception as e:
                 return {"success": False, "error": str(e)}
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def set_member_card(group_id: str, user_id: str, card: str = "") -> dict:
-            """设置群成员名片（群昵称）。空字符串清除名片。
+        """Set or clear a member's group nickname (card).
 
-            Args:
-                group_id: 群号。
-                user_id: 目标 QQ 号。
-                card: 新名片文字，空字符串表示清除。
-            """
+        Pass an empty string to clear the card. This is the display name shown
+        in the group, separate from the user's QQ nickname. Requires bot to
+        have admin privileges.
+
+        Mutates: changes the user's display name in the group.
+        """
             try:
                 await bot.set_group_card(group_id, user_id, card)
                 return {"success": True, "group_id": group_id, "user_id": user_id, "card": card or "(已清除)"}
             except Exception as e:
                 return {"success": False, "error": str(e)}
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def send_group_notice(group_id: str, content: str) -> dict:
-            """发送群公告。
+        """Post a group announcement (notice) to a QQ group.
 
-            Args:
-                group_id: 群号。
-                content: 公告内容。
-            """
+        The announcement is visible to all group members. Requires bot to have
+        admin privileges. For sending regular messages use send_message instead.
+
+        Mutates: creates a group announcement.
+        """
             try:
                 await bot.send_group_notice(group_id, content)
                 return {"success": True, "group_id": group_id}
@@ -1400,13 +1467,16 @@ def register_tools(
 
         # ── 消息撤回 ──────────────────────────────────────
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False})
         async def recall_message(message_id: str) -> dict:
-            """撤回消息。发错了能撤回来，仅限机器人发送的消息或管理员。
+        """Recall (delete) a message sent by the bot.
 
-            Args:
-                message_id: 要撤回的消息 ID。
-            """
+        Only works for messages the bot itself sent, or if the bot is a group
+        admin. Cannot recall messages from other users. Use this to correct
+        mistakes.
+
+        Destructive: permanently removes the message from the chat.
+        """
             try:
                 await bot.delete_msg(message_id)
                 return {"success": True, "message_id": message_id}
@@ -1415,13 +1485,16 @@ def register_tools(
 
         # ── 群成员查询 ────────────────────────────────────
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def get_group_member_list(group_id: str) -> dict:
-            """获取群成员列表。
+        """List all members of a QQ group with their IDs, nicknames, and roles.
 
-            Args:
-                group_id: 群号。
-            """
+        Returns user_id, nickname, card (group display name), and role
+        (owner/admin/member). Use get_group_member_info for detailed info on
+        a single member. For group list use get_group_list.
+
+        Read-only. No side effects.
+        """
             try:
                 members = await bot.get_group_member_list(group_id)
                 summary = [
@@ -1437,14 +1510,15 @@ def register_tools(
             except Exception as e:
                 return {"success": False, "error": str(e)}
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def get_group_member_info(group_id: str, user_id: str) -> dict:
-            """获取指定群成员详细信息。
+        """Get detailed info for one member of a QQ group.
 
-            Args:
-                group_id: 群号。
-                user_id: 目标 QQ 号。
-            """
+        Returns nickname, card, role, join_time, last_sent_time, level, and
+        title. Use get_group_member_list to see all members at once.
+
+        Read-only. No side effects.
+        """
             try:
                 info = await bot.get_group_member_info(group_id, user_id)
                 return {
@@ -1464,43 +1538,45 @@ def register_tools(
 
     if timer_scheduler is not None:
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def add_timer(
             message: str,
             cron_expr: str | None = None,
             interval_seconds: int | None = None,
             once: bool = False,
         ) -> dict:
-            """添加定时任务。到时间通过 wake 唤醒 agent。
+        """Schedule a recurring or one-shot task that wakes the agent with a message.
 
-            支持 cron 和间隔两种模式：
-            - cron_expr: "0 8 * * *" = 每天早上8点
-            - interval_seconds: 3600 = 每小时
+        Supports two scheduling modes:
+        - cron_expr: cron expression like "0 8 * * *" (daily at 8am)
+        - interval_seconds: fixed interval like 3600 (every hour)
 
-            Args:
-                message: 触发时发送给 agent 的内容。
-                cron_expr: cron 表达式 "minute hour * * *"。
-                interval_seconds: 间隔秒数。
-                once: 是否单次触发（触发后自动删除）。
-            """
+        Exactly one of cron_expr or interval_seconds must be provided. When the
+        timer fires, it triggers the wake system with the given message text.
+        Use list_timers to see scheduled tasks, remove_timer to delete.
+
+        Mutates: adds a scheduled task.
+        """
             if not cron_expr and not interval_seconds:
                 return {"success": False, "error": "需要 cron_expr 或 interval_seconds"}
             tid = timer_scheduler.add(cron_expr, interval_seconds, message, once)
             return {"success": True, "task_id": tid}
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False})
         async def remove_timer(index: int) -> dict:
-            """删除定时任务。
+        """Delete a scheduled timer task by index (from list_timers).
 
-            Args:
-                index: 任务索引（从 list_timers 获取）。
-            """
+        Destructive: permanently removes the task.
+        """
             ok = timer_scheduler.remove(index)
             return {"success": ok}
 
-        @mcp.tool()
+        @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def list_timers() -> dict:
-            """列出所有定时任务。"""
+        """List all scheduled timer tasks with their index, schedule, and message.
+
+        Read-only. No side effects.
+        """
             return {"timers": timer_scheduler.list_tasks()}
 
 
