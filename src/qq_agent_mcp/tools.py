@@ -1271,18 +1271,18 @@ def register_tools(
             keywords: list[str] | None = None,
             ignore_if_focused: bool = True,
         ) -> dict:
-        """Add a wake rule: when a matching message arrives, opencode wakes up.
+            """Add a wake rule: when a matching message arrives, opencode wakes up.
 
-        When a message matches this rule, the agent is activated and the message
-        context is made available. Use add_wake_rule to create rules,
-        list_wake_rules to see them, remove_wake_rule to delete, and
-        set_wake_enabled to toggle.
+            When a message matches this rule, the agent is activated and the message
+            context is made available. Use add_wake_rule to create rules,
+            list_wake_rules to see them, remove_wake_rule to delete, and
+            set_wake_enabled to toggle.
 
-        Rules are persisted to disk and survive restarts. Keywords are optional:
-        empty list matches any message. target_id=None matches any source.
+            Rules are persisted to disk and survive restarts. Keywords are optional:
+            empty list matches any message. target_id=None matches any source.
 
-        Mutates the wake rule configuration.
-        """
+            Mutates the wake rule configuration.
+            """
             idx = wake_monitor.add_rule(target_type, target_id, keywords, ignore_if_focused)
             return {
                 "success": True,
@@ -1298,245 +1298,254 @@ def register_tools(
 
         @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def list_wake_rules() -> dict:
-        """List all configured wake rules with their index, target, and keywords.
+            """List all configured wake rules.
 
-        Use add_wake_rule to create, remove_wake_rule to delete, and
-        set_wake_enabled to toggle individual rules.
+            Shows each rule's target type, ID, keywords, enabled state, and
+            focus-ignoring setting. Use add_wake_rule to create rules,
+            remove_wake_rule to delete, and set_wake_enabled to toggle.
 
-        Read-only. No side effects.
-        """
+            Read-only. No side effects.
+            """
             return {"rules": wake_monitor.list_rules()}
 
         @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False})
         async def remove_wake_rule(index: int) -> dict:
-        """Remove a wake rule by its index (from list_wake_rules).
+            """Remove a wake rule by index.
 
-        This is destructive: the rule is permanently deleted. Use
-        set_wake_enabled to temporarily disable instead.
+            Use list_wake_rules to get the current indices. Rules are
+            renumbered after removal. This permanently deletes the rule;
+            to temporarily disable, use set_wake_enabled instead.
 
-        Destructive: permanently removes the rule.
-        """
-            ok = wake_monitor.remove_rule(index)
-            return {"success": ok}
+            Destructive: permanently removes a wake rule.
+            """
+            wake_monitor.remove_rule(index)
+            return {"success": True, "removed_index": index}
 
         @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
-        async def set_wake_enabled(
-            enabled: bool,
-            index: int | None = None,
-        ) -> dict:
-        """Enable or disable wake rules. Pass index for one rule, or omit for all.
+        async def set_wake_enabled(index: int, enabled: bool) -> dict:
+            """Enable or disable a specific wake rule (or all rules if index is None).
 
-        Disabling a rule pauses wake triggers without deleting it. Use
-        remove_wake_rule to permanently delete, add_wake_rule to create new.
+            Use list_wake_rules to see current indices and states. Disabled rules
+            are skipped during wake matching but remain in the configuration.
+            Use remove_wake_rule to permanently delete a rule.
 
-        Mutates rule enabled state.
-        """
-            if index is not None:
-                ok = wake_monitor.set_enabled(index, enabled)
-            else:
-                wake_monitor.set_enabled_all(enabled)
-                ok = True
-            return {"success": ok}
+            Mutates the wake rule configuration.
+            """
+            wake_monitor.set_enabled(index, enabled)
+            return {"success": True, "index": index, "enabled": enabled}
 
         @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def set_wake_pending(pending: bool) -> dict:
-        """Manually lock or unlock wake triggers.
+            """Manually set the wake pending state to block or allow new wakes.
 
-        When pending=True, incoming messages matching rules will NOT trigger
-        wake. When pending=False, normal wake behavior resumes. Use this to
-        prevent duplicate wakes while the agent is already working. Auto-expires
-        after 5 minutes.
+            When pending=True, incoming messages will NOT trigger wake even if
+            they match a rule. When pending=False, messages trigger wake normally.
+            Use this to prevent duplicate wakes while the agent is already working.
 
-        Mutates the pending lock state.
-        """
-            wake_monitor.set_pending(pending)
-            return {"success": True, "pending": pending}
+            Mutates the wake monitor state.
+            """
+            wake_monitor._pending = pending
+            return {"pending": pending}
 
         @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def get_wake_config() -> dict:
-        """Return the current wake configuration: window title patterns and focus shortcut.
+            """Return the current wake configuration (window title patterns, shortcut).
 
-        Use set_wake_config to modify. Read-only.
-        """
-            return wake_monitor.get_config()
+            Use set_wake_config to modify these settings. Changes take effect
+            immediately for future wake activations.
+
+            Read-only. No side effects.
+            """
+            cfg = wake_monitor.config
+            return {
+                "window_title_patterns": cfg.window_title_patterns,
+                "focus_shortcut": cfg.focus_shortcut,
+            }
 
         @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def set_wake_config(
             window_title_patterns: list[str] | None = None,
             focus_shortcut: str | None = None,
         ) -> dict:
-        """Configure which window to activate and how to focus its input box.
+            """Configure the wake target window and focus shortcut.
 
-        window_title_patterns: substrings to match against window titles
-        (e.g. ["opencode", "cursor"]). focus_shortcut: keyboard shortcut to
-        focus the input (e.g. "ctrl+l"). Use get_wake_config to read current
-        values.
+            window_title_patterns: substrings to match against the window title
+            (e.g., ["opencode", "cursor"]). The wake system focuses the first
+            matching window. focus_shortcut: keyboard shortcut to focus the input
+            box (e.g., "ctrl+l"). Changes take effect immediately.
 
-        Mutates the wake configuration.
-        """
-            wake_monitor.set_config(window_title_patterns, focus_shortcut)
-            return {"success": True, "config": wake_monitor.get_config()}
+            Mutates the wake configuration. Persisted across restarts.
+            """
+            if window_title_patterns is not None:
+                wake_monitor.config.window_title_patterns = window_title_patterns
+            if focus_shortcut is not None:
+                wake_monitor.config.focus_shortcut = focus_shortcut
+            return {
+                "window_title_patterns": wake_monitor.config.window_title_patterns,
+                "focus_shortcut": wake_monitor.config.focus_shortcut,
+            }
 
-        # ── 群管理 ──────────────────────────────────────────
+    if timer_scheduler is not None:
 
-        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False})
-        async def mute_member(
-            group_id: str,
-            user_id: str,
-            duration: int = 600,
-        ) -> dict:
-        """Mute a member in a QQ group for a specified duration.
+        @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
+        async def mute_member(group_id: str, user_id: str, duration: int = 600) -> dict:
+            """Mute a member in a QQ group.
 
-        Mutes the user for `duration` seconds (default 600 = 10 minutes).
-        Use unmute_member to reverse. Use kick_member to remove from group.
-        Requires bot to have admin privileges in the group.
+            group_id: the QQ group number. user_id: the QQ number to mute.
+            duration: mute time in seconds (default 600 = 10 minutes). Requires
+            bot to have admin privileges in the group. Use unmute_member to
+            reverse.
 
-        Destructive: restricts a user's ability to speak.
-        """
+            Mutates the group by muting a member.
+            """
             try:
-                await bot.set_group_ban(group_id, user_id, duration)
+                await bot._call("set_group_ban",
+                                group_id=int(group_id), user_id=int(user_id),
+                                duration=duration)
                 return {"success": True, "group_id": group_id, "user_id": user_id, "duration": duration}
             except Exception as e:
                 return {"success": False, "error": str(e)}
 
         @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def unmute_member(group_id: str, user_id: str) -> dict:
-        """Remove a mute from a member in a QQ group.
+            """Unmute a member in a QQ group (set mute duration to 0).
 
-        Reverses a mute applied by mute_member. Safe to call on non-muted
-        members (no-op). Requires bot to have admin privileges.
+            group_id: the QQ group number. user_id: the QQ number to unmute.
+            Requires bot to have admin privileges. Use mute_member to mute.
 
-        Mutates: restores the user's ability to speak.
-        """
+            Mutates the group by unmuting a member.
+            """
             try:
-                await bot.set_group_ban(group_id, user_id, 0)
+                await bot._call("set_group_ban",
+                                group_id=int(group_id), user_id=int(user_id),
+                                duration=0)
                 return {"success": True, "group_id": group_id, "user_id": user_id}
             except Exception as e:
                 return {"success": False, "error": str(e)}
 
         @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False})
-        async def kick_member(
-            group_id: str, user_id: str, reject_add_request: bool = False,
-        ) -> dict:
-        """Kick a member from a QQ group, optionally blocking re-entry.
+        async def kick_member(group_id: str, user_id: str, reject_add_request: bool = False) -> dict:
+            """Kick a member from a QQ group.
 
-        Removes the user from the group. If reject_add_request=True, future
-        join requests from this user are automatically rejected. Use
-        mute_member for temporary restrictions. Requires bot to have admin
-        privileges.
+            group_id: the QQ group number. user_id: the QQ number to kick.
+            reject_add_request: if True, rejects future join requests from this
+            user. Requires bot to have admin privileges. This is irreversible
+            for the current session — the user can re-join if not rejected.
 
-        Destructive: permanently removes the user from the group.
-        """
+            Destructive: removes a member from the group.
+            """
             try:
-                await bot.set_group_kick(group_id, user_id, reject_add_request)
-                action = "并拉黑" if reject_add_request else ""
-                return {"success": True, "group_id": group_id, "user_id": user_id, "action": f"已踢出{action}"}
+                await bot._call("set_group_kick",
+                                group_id=int(group_id), user_id=int(user_id),
+                                reject_add_request=reject_add_request)
+                return {"success": True, "group_id": group_id, "user_id": user_id}
             except Exception as e:
                 return {"success": False, "error": str(e)}
 
         @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def set_member_card(group_id: str, user_id: str, card: str = "") -> dict:
-        """Set or clear a member's group nickname (card).
+            """Set a member's group nickname (card). Empty string clears it.
 
-        Pass an empty string to clear the card. This is the display name shown
-        in the group, separate from the user's QQ nickname. Requires bot to
-        have admin privileges.
+            group_id: the QQ group number. user_id: the QQ number. card: the
+            new nickname text. Requires bot to have admin privileges.
 
-        Mutates: changes the user's display name in the group.
-        """
+            Mutates the member's group card.
+            """
             try:
-                await bot.set_group_card(group_id, user_id, card)
-                return {"success": True, "group_id": group_id, "user_id": user_id, "card": card or "(已清除)"}
+                await bot._call("set_group_card",
+                                group_id=int(group_id), user_id=int(user_id),
+                                card=card)
+                return {"success": True, "group_id": group_id, "user_id": user_id, "card": card}
             except Exception as e:
                 return {"success": False, "error": str(e)}
 
         @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def send_group_notice(group_id: str, content: str) -> dict:
-        """Post a group announcement (notice) to a QQ group.
+            """Send a group announcement (notice) to a QQ group.
 
-        The announcement is visible to all group members. Requires bot to have
-        admin privileges. For sending regular messages use send_message instead.
+            group_id: the QQ group number. content: the announcement text.
+            Requires bot to have admin privileges.
 
-        Mutates: creates a group announcement.
-        """
+            Mutates the group by posting an announcement.
+            """
             try:
-                await bot.send_group_notice(group_id, content)
+                await bot._call("set_group_notice",
+                                group_id=int(group_id), content=content)
                 return {"success": True, "group_id": group_id}
             except Exception as e:
                 return {"success": False, "error": str(e)}
 
-        # ── 消息撤回 ──────────────────────────────────────
-
         @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False})
         async def recall_message(message_id: str) -> dict:
-        """Recall (delete) a message sent by the bot.
+            """Recall (delete) a message sent by the bot.
 
-        Only works for messages the bot itself sent, or if the bot is a group
-        admin. Cannot recall messages from other users. Use this to correct
-        mistakes.
+            message_id: the message ID to recall. Only works for messages sent
+            by the bot itself, or if the bot has admin privileges. Use this
+            to undo a sent message.
 
-        Destructive: permanently removes the message from the chat.
-        """
+            Destructive: permanently deletes a message.
+            """
             try:
-                await bot.delete_msg(message_id)
+                await bot._call("delete_msg", message_id=int(message_id))
                 return {"success": True, "message_id": message_id}
             except Exception as e:
                 return {"success": False, "error": str(e)}
 
-        # ── 群成员查询 ────────────────────────────────────
-
         @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def get_group_member_list(group_id: str) -> dict:
-        """List all members of a QQ group with their IDs, nicknames, and roles.
+            """List all members of a QQ group.
 
-        Returns user_id, nickname, card (group display name), and role
-        (owner/admin/member). Use get_group_member_info for detailed info on
-        a single member. For group list use get_group_list.
+            Returns member IDs, nicknames, roles, join time, and other info.
+            Use get_group_member_info for a single member's details. Use
+            get_group_list to discover group IDs.
 
-        Read-only. No side effects.
-        """
+            Read-only. No side effects.
+            """
             try:
-                members = await bot.get_group_member_list(group_id)
-                summary = [
-                    {
+                members = await bot._call("get_group_member_list",
+                                          group_id=int(group_id))
+                result = []
+                for m in members:
+                    result.append({
                         "user_id": str(m.get("user_id", "")),
                         "nickname": m.get("nickname", ""),
                         "card": m.get("card", ""),
-                        "role": m.get("role", ""),
-                    }
-                    for m in members
-                ]
-                return {"success": True, "group_id": group_id, "member_count": len(summary), "members": summary}
+                        "role": m.get("role", "member"),
+                        "join_time": m.get("join_time", 0),
+                        "last_sent_time": m.get("last_sent_time", 0),
+                        "level": m.get("level", ""),
+                        "title": m.get("title", ""),
+                    })
+                return {"members": result, "count": len(result), "group_id": group_id}
             except Exception as e:
                 return {"success": False, "error": str(e)}
 
         @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def get_group_member_info(group_id: str, user_id: str) -> dict:
-        """Get detailed info for one member of a QQ group.
+            """Get detailed info for a specific QQ group member.
 
-        Returns nickname, card, role, join_time, last_sent_time, level, and
-        title. Use get_group_member_list to see all members at once.
+            Returns nickname, card, role, join time, last sent time, level,
+            title, and other metadata. Use get_group_member_list to list all
+            members. Use get_group_list to discover group IDs.
 
-        Read-only. No side effects.
-        """
+            Read-only. No side effects.
+            """
             try:
-                info = await bot.get_group_member_info(group_id, user_id)
+                info = await bot._call("get_group_member_info",
+                                       group_id=int(group_id), user_id=int(user_id))
                 return {
-                    "success": True,
-                    "group_id": group_id,
                     "user_id": str(info.get("user_id", "")),
                     "nickname": info.get("nickname", ""),
                     "card": info.get("card", ""),
-                    "role": info.get("role", ""),
+                    "role": info.get("role", "member"),
                     "join_time": info.get("join_time", 0),
                     "last_sent_time": info.get("last_sent_time", 0),
                     "level": info.get("level", ""),
                     "title": info.get("title", ""),
+                    "group_id": group_id,
                 }
             except Exception as e:
                 return {"success": False, "error": str(e)}
-
-    if timer_scheduler is not None:
 
         @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def add_timer(
@@ -1545,89 +1554,52 @@ def register_tools(
             interval_seconds: int | None = None,
             once: bool = False,
         ) -> dict:
-        """Schedule a recurring or one-shot task that wakes the agent with a message.
+            """Add a timer task that triggers a wake with the given message at scheduled times.
 
-        Supports two scheduling modes:
-        - cron_expr: cron expression like "0 8 * * *" (daily at 8am)
-        - interval_seconds: fixed interval like 3600 (every hour)
+            Supports cron expressions and fixed-interval scheduling:
+            - cron_expr: "0 8 * * *" = every day at 8am
+            - interval_seconds: 3600 = every hour
+            - once: if True, auto-removes after first trigger
 
-        Exactly one of cron_expr or interval_seconds must be provided. When the
-        timer fires, it triggers the wake system with the given message text.
-        Use list_timers to see scheduled tasks, remove_timer to delete.
+            At least one of cron_expr or interval_seconds must be provided.
+            Use list_timers to see active timers, remove_timer to cancel.
 
-        Mutates: adds a scheduled task.
-        """
-            if not cron_expr and not interval_seconds:
-                return {"success": False, "error": "需要 cron_expr 或 interval_seconds"}
-            tid = timer_scheduler.add(cron_expr, interval_seconds, message, once)
-            return {"success": True, "task_id": tid}
+            Mutates the timer configuration. Timers persist across restarts.
+            """
+            try:
+                idx = timer_scheduler.add_timer(message, cron_expr, interval_seconds, once)
+                return {"success": True, "index": idx, "message": message,
+                        "cron_expr": cron_expr, "interval_seconds": interval_seconds, "once": once}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
 
         @mcp.tool(annotations={"readOnlyHint": False, "destructiveHint": True, "idempotentHint": True, "openWorldHint": False})
         async def remove_timer(index: int) -> dict:
-        """Delete a scheduled timer task by index (from list_timers).
+            """Remove a timer task by index.
 
-        Destructive: permanently removes the task.
-        """
-            ok = timer_scheduler.remove(index)
-            return {"success": ok}
+            Use list_timers to get current indices. Timers are renumbered
+            after removal. This permanently deletes the timer.
+
+            Destructive: permanently removes a timer.
+            """
+            try:
+                timer_scheduler.remove_timer(index)
+                return {"success": True, "removed_index": index}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
 
         @mcp.tool(annotations={"readOnlyHint": True, "destructiveHint": False, "idempotentHint": True, "openWorldHint": False})
         async def list_timers() -> dict:
-        """List all scheduled timer tasks with their index, schedule, and message.
+            """List all configured timer tasks.
 
-        Read-only. No side effects.
-        """
-            return {"timers": timer_scheduler.list_tasks()}
+            Shows each timer's index, message, cron expression, interval,
+            once flag, and next run time. Use add_timer to create timers,
+            remove_timer to cancel.
 
-
-async def _llm_compress(ctx_mcp: Context, messages: list) -> str:
-    """Use the client's LLM (via MCP sampling) to compress messages into a summary."""
-    # Format messages for the LLM
-    lines = []
-    for m in messages:
-        lines.append(f"[{m.timestamp}] {m.sender_name}: {m.content}")
-    chat_log = "\n".join(lines)
-
-    result = await ctx_mcp.session.create_message(
-        messages=[
-            SamplingMessage(
-                role="user",
-                content=TextContent(
-                    type="text",
-                    text=(
-                        "请将以下聊天记录压缩为一段简洁的中文摘要，保留关键信息（话题、观点、重要发言者）。"
-                        "摘要应在 300 字以内，不要使用列表格式，用自然段落描述。\n\n"
-                        f"聊天记录：\n{chat_log}"
-                    ),
-                ),
-            )
-        ],
-        max_tokens=8192,
-        system_prompt="你是一个聊天记录摘要助手。只输出摘要内容，不要添加任何前缀或解释。",
-    )
-
-    # Extract text from result
-    if hasattr(result, "content"):
-        content = result.content
-        if isinstance(content, str):
-            return content.strip()
-        if isinstance(content, TextContent):
-            return content.text.strip()
-        if isinstance(content, list):
-            parts = []
-            for c in content:
-                if hasattr(c, "text"):
-                    parts.append(c.text)
-            return " ".join(parts).strip()
-    return str(result).strip()
-
-
-def _rule_based_compress(messages: list) -> str:
-    """Fallback: rule-based compression when LLM is unavailable."""
-    lines = []
-    for m in messages:
-        content = m.content[:80] + "..." if len(m.content) > 80 else m.content
-        lines.append(f"{m.sender_name}: {content}")
-    summary_block = " | ".join(lines)
-    ts_range = f"[{messages[0].timestamp} ~ {messages[-1].timestamp}]"
-    return f"{ts_range} {summary_block}"
+            Read-only. No side effects.
+            """
+            try:
+                timers = timer_scheduler.list_timers()
+                return {"timers": timers, "count": len(timers)}
+            except Exception as e:
+                return {"success": False, "error": str(e)}
