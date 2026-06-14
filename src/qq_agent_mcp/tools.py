@@ -1209,9 +1209,14 @@ def register_tools(
         async def debug_wake_pipeline(target_type: str = "private", target_id: str = "3838379219") -> dict:
             """Simulate a wake trigger to debug the wake pipeline.
 
-            Creates a fake message and checks: callback is set, rules match,
-            pending state, and running state. Invokes the callback to test the
-            full pipeline. Use diagnose_wake for a read-only state check.
+            Creates a fake message from the given target_id and target_type
+            and checks: is the callback registered, does any rule match the
+            fake message, is the monitor currently pending or running. Then
+            invokes the callback to exercise the full activation pipeline.
+            The response fields (callback_set, matches_rules, pending,
+            running, callback_invoked) tell you exactly where the pipeline
+            is broken. Use diagnose_wake for a read-only snapshot without
+            triggering the callback.
 
             Read-only with respect to QQ. May invoke the wake callback.
             """
@@ -1249,9 +1254,14 @@ def register_tools(
         async def diagnose_wake() -> dict:
             """Return the current state of the wake monitor for debugging.
 
-            Shows: running status, active rules, whether the message callback
-            is registered, and total buffered messages. For testing the pipeline
-            with a fake message, use debug_wake_pipeline instead.
+            Shows: whether the monitor is running, all active rules (with
+            target_type, target_id, keywords, enabled state, ignore_if_focused),
+            whether the message callback is registered on the context manager,
+            and total buffered messages across all targets. Use this as the
+            first step when wake is not working — if monitor_created or
+            callback_set is False, the monitor was never initialized. For a
+            more aggressive test that injects a fake message, use
+            debug_wake_pipeline instead.
 
             Read-only. No side effects.
             """
@@ -1412,6 +1422,9 @@ def register_tools(
 
             group_id: the QQ group number. user_id: the QQ number to unmute.
             Requires bot to have admin privileges. Use mute_member to mute.
+            Unmuting a member who is not muted is a no-op (returns success).
+            Call get_group_member_list first to verify a member is currently
+            muted before deciding to unmute.
 
             Mutates the group by unmuting a member.
             """
@@ -1431,6 +1444,9 @@ def register_tools(
             reject_add_request: if True, rejects future join requests from this
             user. Requires bot to have admin privileges. This is irreversible
             for the current session — the user can re-join if not rejected.
+            Consider using mute_member (temporary) as a less drastic
+            alternative. The bot cannot kick group owners or admins of equal
+            rank; returns error in those cases.
 
             Destructive: removes a member from the group.
             """
@@ -1463,8 +1479,12 @@ def register_tools(
         async def send_group_notice(group_id: str, content: str) -> dict:
             """Send a group announcement (notice) to a QQ group.
 
-            group_id: the QQ group number. content: the announcement text.
-            Requires bot to have admin privileges.
+            group_id: the QQ group number. content: the announcement text
+            (plain text only, no rich media). Requires bot to have admin
+            privileges. The notice appears in the group's announcement bar
+            for all members. Unlike send_message, this is persistent and
+            visible to members who join later. Avoid posting notices too
+            frequently — QQ may rate-limit or throttle excessive notices.
 
             Mutates the group by posting an announcement.
             """
@@ -1479,9 +1499,13 @@ def register_tools(
         async def recall_message(message_id: str) -> dict:
             """Recall (delete) a message sent by the bot.
 
-            message_id: the message ID to recall. Only works for messages sent
-            by the bot itself, or if the bot has admin privileges. Use this
-            to undo a sent message.
+            message_id: the message ID to recall (obtained from send_message's
+            or send_image's message_id in the response). Only works for
+            messages sent by the bot itself within approximately 2 minutes of
+            sending, or anytime if the bot has admin/owner privileges in the
+            group. Cannot recall messages sent by other users. Use this to
+            undo accidental sends. The message is permanently deleted for all
+            members.
 
             Destructive: permanently deletes a message.
             """
@@ -1495,9 +1519,14 @@ def register_tools(
         async def get_group_member_list(group_id: str) -> dict:
             """List all members of a QQ group.
 
-            Returns member IDs, nicknames, roles, join time, and other info.
-            Use get_group_member_info for a single member's details. Use
-            get_group_list to discover group IDs.
+            Returns for each member: user_id (QQ number), nickname, card
+            (group nickname), role (owner/admin/member), join_time (unix
+            timestamp), last_sent_time, level, and title (group honorific).
+            Use get_group_member_info for a single member's detailed info.
+            Use get_group_list to discover valid group_id values. The
+            response includes a count field for the number of members.
+            Large groups (>200 members) may be paginated by QQ; the result
+            includes all members QQ returns in one call.
 
             Read-only. No side effects.
             """
@@ -1524,9 +1553,13 @@ def register_tools(
         async def get_group_member_info(group_id: str, user_id: str) -> dict:
             """Get detailed info for a specific QQ group member.
 
-            Returns nickname, card, role, join time, last sent time, level,
-            title, and other metadata. Use get_group_member_list to list all
-            members. Use get_group_list to discover group IDs.
+            Returns: user_id, nickname, card (group nickname), role (owner/
+            admin/member), join_time (unix timestamp), last_sent_time, level,
+            title (group honorific), and age/gender if available. Unlike
+            get_group_member_list which returns all members, this gives a
+            single member's full profile. Use this to look up a specific user
+            before deciding to mute, kick, or set their card. Use
+            get_group_member_list when you need to enumerate all members.
 
             Read-only. No side effects.
             """

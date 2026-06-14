@@ -54,10 +54,10 @@ class TimerScheduler:
 
     # ── CRUD ──
 
-    def add(self, cron_expr: str | None = None,
-            interval_seconds: int | None = None,
-            message: str = "",
-            once: bool = False) -> int:
+    def add_timer(self, message: str = "",
+                  cron_expr: str | None = None,
+                  interval_seconds: int | None = None,
+                  once: bool = False) -> int:
         tid = str(self._next_id)
         self._next_id += 1
         task = TimerTask(
@@ -74,7 +74,7 @@ class TimerScheduler:
                      tid, cron_expr, interval_seconds, once, message)
         return int(tid)
 
-    def remove(self, index: int) -> bool:
+    def remove_timer(self, index: int) -> bool:
         if 0 <= index < len(self._tasks):
             removed = self._tasks.pop(index)
             self._save()
@@ -82,7 +82,7 @@ class TimerScheduler:
             return True
         return False
 
-    def list_tasks(self) -> list[dict]:
+    def list_timers(self) -> list[dict]:
         return [
             {
                 "index": i,

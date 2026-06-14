@@ -380,8 +380,8 @@ class WakeConfig:
         try:
             with open(CONFIG_FILE, "w", encoding="utf-8") as f:
                 json.dump({
-                    "window_title_patterns": self.config.window_title_patterns,
-                    "focus_shortcut": self.config.focus_shortcut,
+                    "window_title_patterns": self.window_title_patterns,
+                    "focus_shortcut": self.focus_shortcut,
                 }, f, ensure_ascii=False, indent=2)
         except Exception as e:
             logger.warning("Failed to save wake config: %s", e)
