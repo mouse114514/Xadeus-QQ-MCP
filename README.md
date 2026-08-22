@@ -3,6 +3,7 @@
 > Built by a 15-year-old developer, based on [Amadeus-QQ-MCP](https://github.com/Sakura325/Amadeus-QQ-MCP).
 
 [![Xadeus-QQ-MCP MCP server](https://glama.ai/mcp/servers/mouse114514/Xadeus-QQ-MCP/badges/card.svg)](https://glama.ai/mcp/servers/mouse114514/Xadeus-QQ-MCP)
+[![Listed on awesome-remote-mcp-servers](https://img.shields.io/badge/Listed_on-awesome--remote--mcp--servers-blue?logo=github)](https://github.com/Appnova-EU-OU/awesome-remote-mcp-servers)
 
 QQ MCP (Model Context Protocol) Server — connects to QQ via NapCatQQ (OneBot v11), giving AI agents direct control over QQ (send/receive messages, group management, auto-wake on incoming messages, and more).
 
